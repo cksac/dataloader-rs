@@ -4,10 +4,10 @@ extern crate tokio_core;
 use std::mem;
 use std::thread;
 use std::sync::Arc;
-use std::time::Duration;
 
 use futures::{Stream, Future, Poll, Async};
 use futures::sync::{mpsc, oneshot};
+use futures::future::{join_all, JoinAll};
 use tokio_core::reactor::Core;
 
 #[derive(Clone, Debug)]
@@ -37,28 +37,18 @@ pub struct Loader<K, V> {
 }
 
 impl<K, V> Loader<K, V> {
-    pub fn load(&self, key: K) -> LoadFuture<K, V> {
+    pub fn load(&self, key: K) -> LoadFuture<V> {
         let (tx, rx) = oneshot::channel();
         let msg = Message::LoadOne {
             key: key,
             reply: tx,
         };
-        // This call may not completed as thread are parked in Future
-        self.tx.send(msg).unwrap();
-        // TODO: fix it, make sure send completed
-        thread::sleep(Duration::from_millis(50));
-        LoadFuture {
-            rx: rx,
-            loader: Loader { tx: self.tx.clone() },
-        }
+        let _ = self.tx.send(msg);
+        LoadFuture { rx: rx }
     }
 
-    /// Called when poll LoadFuture return NotReady
-    fn dispatch_rest(&self) {
-        // This call may not completed as thread are parked in Future
-        self.tx.send(Message::LoadRest).unwrap();
-        // TODO: fix it, make sure send completed
-        thread::sleep(Duration::from_millis(50));
+    pub fn load_many(&self, keys: Vec<K>) -> JoinAll<Vec<LoadFuture<V>>> {
+        join_all(keys.into_iter().map(|v| self.load(v)).collect())
     }
 }
 
@@ -75,29 +65,29 @@ impl<K, V> Loader<K, V>
         let inner_handle = Arc::new(tx);
         let loader = Loader { tx: inner_handle };
 
-        // worker thread to call batch_fn for load requests
         thread::spawn(move || {
             let batch_fn = Arc::new(batch_fn);
             let mut core = Core::new().unwrap();
             let handle = core.handle();
 
-            let inner = Inner {
+            let batched = Batched {
                 rx: rx,
                 max_batch_size: batch_fn.max_batch_size(),
                 items: Vec::with_capacity(batch_fn.max_batch_size()),
                 channel_closed: false,
             };
 
-            let load_batch = batch_fn.clone();
+            let load_fn = batch_fn.clone();
             let loader =
-                inner.for_each(move |requests: Vec<(K, oneshot::Sender<Result<V, LoadError>>)>| {
+                batched.for_each(move |requests: Vec<(K,
+                                                      oneshot::Sender<Result<V, LoadError>>)>| {
                     let (keys, replys) = requests.into_iter()
                         .fold((Vec::new(), Vec::new()), |mut soa, i| {
                             soa.0.push(i.0);
                             soa.1.push(i.1);
                             soa
                         });
-                    let batch_job = load_batch.load(&keys).then(move |x| {
+                    let batch_job = load_fn.load(&keys).then(move |x| {
                         match x {
                             Ok(values) => {
                                 for r in replys.into_iter().zip(values) {
@@ -126,22 +116,17 @@ impl<K, V> Loader<K, V>
     }
 }
 
-pub struct LoadFuture<K, V> {
+pub struct LoadFuture<V> {
     rx: oneshot::Receiver<Result<V, LoadError>>,
-    loader: Loader<K, V>,
 }
 
-impl<K, V> Future for LoadFuture<K, V> {
+impl<V> Future for LoadFuture<V> {
     type Item = V;
     type Error = LoadError;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         match self.rx.poll() {
-            Ok(Async::NotReady) => {
-                // request may pending in the queue, dispatch requests in the queue as batch
-                self.loader.dispatch_rest();
-                Ok(Async::NotReady)
-            }
+            Ok(Async::NotReady) => Ok(Async::NotReady),
             Ok(Async::Ready(Ok(v))) => Ok(Async::Ready(v)),
             Ok(Async::Ready(Err(e))) => Err(e),
             Err(_) => Err(LoadError::SenderDropped),
@@ -149,20 +134,18 @@ impl<K, V> Future for LoadFuture<K, V> {
     }
 }
 
-// Message pass between loader and worker thread
 enum Message<K, V> {
     LoadOne { key: K, reply: oneshot::Sender<V> },
-    LoadRest,
 }
 
-struct Inner<K, V> {
+struct Batched<K, V> {
     rx: mpsc::UnboundedReceiver<Message<K, Result<V, LoadError>>>,
     max_batch_size: usize,
     items: Vec<(K, oneshot::Sender<Result<V, LoadError>>)>,
     channel_closed: bool,
 }
 
-impl<K, V> Stream for Inner<K, V> {
+impl<K, V> Stream for Batched<K, V> {
     type Item = Vec<(K, oneshot::Sender<Result<V, LoadError>>)>;
     type Error = LoadError;
 
@@ -173,25 +156,22 @@ impl<K, V> Stream for Inner<K, V> {
         loop {
             match self.rx.poll() {
                 Ok(Async::NotReady) => {
-                    return Ok(Async::NotReady);
+                    return if self.items.len() > 0 {
+                        let batch = mem::replace(&mut self.items, Vec::new());
+                        Ok(Some(batch).into())
+                    } else {
+                        Ok(Async::NotReady)
+                    };
                 }
                 Ok(Async::Ready(Some(msg))) => {
                     match msg {
                         Message::LoadOne { key, reply } => {
                             self.items.push((key, reply));
                             if self.items.len() >= self.max_batch_size {
-                                let batch = mem::replace(&mut self.items,
-                                                         Vec::with_capacity(self.max_batch_size));
+                                let buf = Vec::with_capacity(self.max_batch_size);
+                                let batch = mem::replace(&mut self.items, buf);
                                 return Ok(Some(batch).into());
                             }
-                        }
-                        Message::LoadRest => {
-                            return if self.items.len() > 0 {
-                                let batch = mem::replace(&mut self.items, Vec::new());
-                                Ok(Some(batch).into())
-                            } else {
-                                Ok(Async::NotReady)
-                            };
                         }
                     }
                 }
