@@ -1,23 +1,24 @@
 # Dataloader
 [![Build Status](https://travis-ci.org/cksac/dataloader-rs.svg?branch=master)](https://travis-ci.org/cksac/dataloader-rs)
-[![Latest Version](https://img.shields.io/crates/v/dataloader.svg)](https://crates.io/crates/dataloader)
+[![Crates.io](https://img.shields.io/crates/v/dataloader.svg)](https://crates.io/crates/dataloader)
 
 Rust implementation of [Facebook's DataLoader](https://github.com/facebook/dataloader) using futures and tokio-core.
+
+[Documentation](https://docs.rs/dataloader)
 
 ## Status
 This project is a work in progress.
  - [x] Batching load requests
  - [ ] Cache load result
 
-## Installation
-Add fake to your Cargo.toml
+## Usage
+Add to your Cargo.toml
 ```toml
 [dependencies]
 futures = "0.1"
 dataloader = "0.1"
 ```
 
-## Usage
 ```rust
 extern crate futures;
 extern crate dataloader;
