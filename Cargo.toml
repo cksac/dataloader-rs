@@ -2,6 +2,13 @@
 name = "dataloader"
 version = "0.1.0"
 authors = ["cksac <cs.cksac@gmail.com>"]
+description = "Rust implementation of Facebook's DataLoader using futures and tokio-core."
+keywords = ["batcher", "dataloader", "cache"]
+categories = ["Asynchronous", "Caching"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/cksac/dataloader-rs"
+homepage = "https://github.com/cksac/dataloader-rs"
 
 [dependencies]
 futures = "0.1"

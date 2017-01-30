@@ -8,7 +8,7 @@ use futures::future::ok;
 struct Batcher;
 impl BatchFn<i32, i32> for Batcher {
     type Error = LoadError;
-    fn load(&self, keys: &Vec<i32>) -> Box<Future<Item = Vec<i32>, Error = Self::Error>> {
+    fn load(&self, keys: &[i32]) -> Box<Future<Item = Vec<i32>, Error = Self::Error>> {
         // println!("load batch {:?}", keys);
         ok(keys.into_iter().map(|v| v * 10).collect()).boxed()
     }

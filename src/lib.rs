@@ -24,7 +24,7 @@ impl LoadError {
 
 pub trait BatchFn<K, V> {
     type Error: Into<LoadError>;
-    fn load(&self, keys: &Vec<K>) -> Box<Future<Item = Vec<V>, Error = Self::Error>>;
+    fn load(&self, keys: &[K]) -> Box<Future<Item = Vec<V>, Error = Self::Error>>;
 
     fn max_batch_size(&self) -> usize {
         200
@@ -156,11 +156,11 @@ impl<K, V> Stream for Batched<K, V> {
         loop {
             match self.rx.poll() {
                 Ok(Async::NotReady) => {
-                    return if self.items.len() > 0 {
+                    return if self.items.is_empty() {
+                        Ok(Async::NotReady)
+                    } else {
                         let batch = mem::replace(&mut self.items, Vec::new());
                         Ok(Some(batch).into())
-                    } else {
-                        Ok(Async::NotReady)
                     };
                 }
                 Ok(Async::Ready(Some(msg))) => {
@@ -176,15 +176,15 @@ impl<K, V> Stream for Batched<K, V> {
                     }
                 }
                 Ok(Async::Ready(None)) => {
-                    return if self.items.len() > 0 {
+                    return if self.items.is_empty() {
+                        Ok(Async::Ready(None))
+                    } else {
                         let batch = mem::replace(&mut self.items, Vec::new());
                         Ok(Some(batch).into())
-                    } else {
-                        Ok(Async::Ready(None))
                     };
                 }
                 Err(_) => {
-                    return if self.items.len() == 0 {
+                    return if self.items.is_empty() {
                         Ok(Async::Ready(None))
                     } else {
                         self.channel_closed = true;
