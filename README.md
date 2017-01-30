@@ -19,6 +19,7 @@ futures = "0.1"
 dataloader = "0.1"
 ```
 
+Add to your crate
 ```rust
 extern crate futures;
 extern crate dataloader;
