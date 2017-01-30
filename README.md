@@ -3,16 +3,17 @@ Rust implementation of [Facebook's DataLoader](https://github.com/facebook/datal
 
 ## Status
 This project is a work in progress.
-    [x] Batching load requests
-    [ ] Cache load result
+ - [x] Batching load requests
+ - [ ] Cache load result
 
-##Installation
+## Installation
 Add fake to your Cargo.toml
 ```toml
 [dependencies]
 futures = "0.1"
 dataloader = { git = "https://github.com/cksac/dataloader-rs" }
 ```
+
 ## Usage
 ```rust
 extern crate futures;
