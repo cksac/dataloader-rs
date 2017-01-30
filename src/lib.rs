@@ -85,7 +85,7 @@ impl<K, V> Loader<K, V>
             let inner = Inner {
                 rx: rx,
                 max_batch_size: batch_fn.max_batch_size(),
-                items: Vec::with_capacity(10),
+                items: Vec::with_capacity(batch_fn.max_batch_size()),
                 err: None,
             };
 
