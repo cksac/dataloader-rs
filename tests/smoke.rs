@@ -14,7 +14,7 @@ impl BatchFn<i32, i32> for Batcher {
     }
 
     fn max_batch_size(&self) -> usize {
-        1
+        10
     }
 }
 

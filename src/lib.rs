@@ -12,8 +12,7 @@ use tokio_core::reactor::Core;
 
 #[derive(Clone, Debug)]
 pub enum LoadError {
-    Receiver,
-    LoadCanceled,
+    SenderDropped,
     Custom(String),
 }
 
@@ -86,7 +85,7 @@ impl<K, V> Loader<K, V>
                 rx: rx,
                 max_batch_size: batch_fn.max_batch_size(),
                 items: Vec::with_capacity(batch_fn.max_batch_size()),
-                err: None,
+                channel_closed: false,
             };
 
             let load_batch = batch_fn.clone();
@@ -117,7 +116,7 @@ impl<K, V> Loader<K, V>
                     handle.spawn(batch_job);
                     Ok(())
                 });
-            core.run(loader).unwrap();
+            let _ = core.run(loader);
 
             // Run until all batch jobs completed
             core.turn(None);
@@ -145,7 +144,7 @@ impl<K, V> Future for LoadFuture<K, V> {
             }
             Ok(Async::Ready(Ok(v))) => Ok(Async::Ready(v)),
             Ok(Async::Ready(Err(e))) => Err(e),
-            Err(_) => Err(LoadError::LoadCanceled),
+            Err(_) => Err(LoadError::SenderDropped),
         }
     }
 }
@@ -160,7 +159,7 @@ struct Inner<K, V> {
     rx: mpsc::UnboundedReceiver<Message<K, Result<V, LoadError>>>,
     max_batch_size: usize,
     items: Vec<(K, oneshot::Sender<Result<V, LoadError>>)>,
-    err: Option<LoadError>,
+    channel_closed: bool,
 }
 
 impl<K, V> Stream for Inner<K, V> {
@@ -168,8 +167,8 @@ impl<K, V> Stream for Inner<K, V> {
     type Error = LoadError;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        if let Some(err) = self.err.take() {
-            return Err(err);
+        if self.channel_closed {
+            return Ok(Async::Ready(None));
         }
         loop {
             match self.rx.poll() {
@@ -179,43 +178,39 @@ impl<K, V> Stream for Inner<K, V> {
                 Ok(Async::Ready(Some(msg))) => {
                     match msg {
                         Message::LoadOne { key, reply } => {
-                            //println!("get one request");
                             self.items.push((key, reply));
                             if self.items.len() >= self.max_batch_size {
-                                //println!("get one batch");
                                 let batch = mem::replace(&mut self.items,
                                                          Vec::with_capacity(self.max_batch_size));
                                 return Ok(Some(batch).into());
                             }
                         }
                         Message::LoadRest => {
-                            // println!("LoadRest");
                             return if self.items.len() > 0 {
-                                //println!("make request in queue into one batch");
-                                let rest = mem::replace(&mut self.items, Vec::new());
-                                Ok(Some(rest).into())
+                                let batch = mem::replace(&mut self.items, Vec::new());
+                                Ok(Some(batch).into())
                             } else {
-                                return Ok(Async::NotReady);
+                                Ok(Async::NotReady)
                             };
                         }
                     }
                 }
                 Ok(Async::Ready(None)) => {
                     return if self.items.len() > 0 {
-                        let rest = mem::replace(&mut self.items, Vec::new());
-                        Ok(Some(rest).into())
+                        let batch = mem::replace(&mut self.items, Vec::new());
+                        Ok(Some(batch).into())
                     } else {
                         Ok(Async::Ready(None))
-                    }
+                    };
                 }
                 Err(_) => {
-                    if self.items.len() == 0 {
-                        return Err(LoadError::Receiver);
+                    return if self.items.len() == 0 {
+                        Ok(Async::Ready(None))
                     } else {
-                        self.err = Some(LoadError::Receiver);
-                        let rest = mem::replace(&mut self.items, Vec::new());
-                        return Ok(Some(rest).into());
-                    }
+                        self.channel_closed = true;
+                        let batch = mem::replace(&mut self.items, Vec::new());
+                        Ok(Some(batch).into())
+                    };
                 }
             }
         }
