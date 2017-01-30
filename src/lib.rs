@@ -171,14 +171,11 @@ impl<K, V> Stream for Inner<K, V> {
         if let Some(err) = self.err.take() {
             return Err(err);
         }
-
         loop {
             match self.rx.poll() {
-
                 Ok(Async::NotReady) => {
                     return Ok(Async::NotReady);
                 }
-
                 Ok(Async::Ready(Some(msg))) => {
                     match msg {
                         Message::LoadOne { key, reply } => {
@@ -192,7 +189,7 @@ impl<K, V> Stream for Inner<K, V> {
                             }
                         }
                         Message::LoadRest => {
-                            println!("LoadRest");
+                            // println!("LoadRest");
                             return if self.items.len() > 0 {
                                 //println!("make request in queue into one batch");
                                 let rest = mem::replace(&mut self.items, Vec::new());
@@ -203,7 +200,6 @@ impl<K, V> Stream for Inner<K, V> {
                         }
                     }
                 }
-
                 Ok(Async::Ready(None)) => {
                     return if self.items.len() > 0 {
                         let rest = mem::replace(&mut self.items, Vec::new());
@@ -212,7 +208,6 @@ impl<K, V> Stream for Inner<K, V> {
                         Ok(Async::Ready(None))
                     }
                 }
-
                 Err(_) => {
                     if self.items.len() == 0 {
                         return Err(LoadError::Receiver);
