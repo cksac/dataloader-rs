@@ -1,4 +1,6 @@
 # Dataloader
+[![Build Status](https://travis-ci.org/cksac/dataloader-rs.svg?branch=master)](https://travis-ci.org/cksac/dataloader-rs)
+[![Latest Version](https://img.shields.io/crates/v/dataloader.svg)](https://crates.io/crates/dataloader)
 Rust implementation of [Facebook's DataLoader](https://github.com/facebook/dataloader) using futures and tokio-core.
 
 ## Status
@@ -11,7 +13,7 @@ Add fake to your Cargo.toml
 ```toml
 [dependencies]
 futures = "0.1"
-dataloader = { git = "https://github.com/cksac/dataloader-rs" }
+dataloader = "0.1"
 ```
 
 ## Usage
