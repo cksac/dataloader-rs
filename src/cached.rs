@@ -47,11 +47,8 @@ impl<K, V, E> Loader<K, V, E>
     }
 
     pub fn prime(&self, key: K, val: V) {
-        match self.cache.borrow_mut().entry(key) {
-            Entry::Vacant(v) => {
-                v.insert(LoadFuture::Prime(val));
-            }
-            _ => {}
+        if let Entry::Vacant(v) = self.cache.borrow_mut().entry(key) {
+            v.insert(LoadFuture::Prime(val));
         }
     }
 }
