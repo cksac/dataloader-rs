@@ -16,7 +16,7 @@ Add to your Cargo.toml
 ```toml
 [dependencies]
 futures = "0.1"
-dataloader = "0.1"
+dataloader = "0.2"
 ```
 
 Add to your crate
