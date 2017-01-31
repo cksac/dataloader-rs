@@ -133,7 +133,7 @@ fn test_clear_all() {
 }
 
 #[test]
-fn test_prim() {
+fn test_prime() {
     // batch size = 2, value will be (batch_fn call seq,  v * 10)
     let loader = Loader::<i32, (usize, i32), ()>::new(Batcher::new(1)).cached();
     loader.prime(1, (0, 101));
