@@ -10,7 +10,7 @@ use common::batcher::*;
 
 #[test]
 fn smoke() {
-    let loader = Loader::new(Batcher::new(2));
+    let loader = Loader::new(Batcher::new(2)).cached();
     let v1 = loader.load(1);
     let v2 = loader.load(2);
     let v3 = loader.load(3);
@@ -35,7 +35,7 @@ fn smoke() {
 
 #[test]
 fn nested_load() {
-    let loader = Loader::new(Batcher::new(2));
+    let loader = Loader::new(Batcher::new(2)).cached();
     let v1 = loader.load(3).map(|v| loader.load(v).wait().unwrap());
     let v2 = loader.load(4).map(|v| loader.load(v).wait().unwrap());
     assert_eq!((300, 400), v1.join(v2).wait().unwrap());
@@ -43,7 +43,7 @@ fn nested_load() {
 
 #[test]
 fn nested_load_many() {
-    let loader = Loader::new(Batcher::new(2));
+    let loader = Loader::new(Batcher::new(2)).cached();
     let v1 = loader.load(3).map(|v| loader.load_many(vec![v, v + 1, v + 2]).wait().unwrap());
     let v2 = loader.load(4).map(|v| loader.load_many(vec![v, v + 1, v + 2]).wait().unwrap());
     let expected = (vec![300, 310, 320], vec![400, 410, 420]);
@@ -52,14 +52,14 @@ fn nested_load_many() {
 
 #[test]
 fn test_batch_fn_error() {
-    let loader = Loader::<i32, i32, MyError>::new(BadBatcher);
+    let loader = Loader::<i32, i32, MyError>::new(BadBatcher).cached();
     let v1 = loader.load(1).wait();
     assert_eq!(LoadError::BatchFn(MyError::Unknown), v1.err().unwrap());
 }
 
 #[test]
 fn test_result_val() {
-    let loader = Loader::<i32, Result<i32, ValueError>, MyError>::new(BadBatcher);
+    let loader = Loader::<i32, Result<i32, ValueError>, MyError>::new(BadBatcher).cached();
     let v1 = loader.load_many(vec![1, 2]).wait();
     assert_eq!(vec![Err(ValueError::NotEven), Ok(20)], v1.unwrap());
 }
@@ -67,7 +67,7 @@ fn test_result_val() {
 #[test]
 fn test_batch_call_seq() {
     // batch size = 2, value will be (batch_fn call seq,  v * 10)
-    let loader = Loader::<i32, (usize, i32), ()>::new(Batcher::new(2));
+    let loader = Loader::<i32, (usize, i32), ()>::new(Batcher::new(2)).cached();
     let v1 = loader.load(1);
     let v2 = loader.load(2);
     let v3 = loader.load(3);
@@ -81,22 +81,21 @@ fn test_batch_call_seq() {
     //v3 and v4 should be in sencod batch
     assert_eq!((2, 30), v3.wait().unwrap());
     assert_eq!((2, 40), v4.wait().unwrap());
-    //v5 and v6 should be be in third batch
-    assert_eq!((3, 10), v5.wait().unwrap());
-    assert_eq!((3, 20), v6.wait().unwrap());
+    //v5 and v6 should be using cache of first batch
+    assert_eq!((1, 10), v5.wait().unwrap());
+    assert_eq!((1, 20), v6.wait().unwrap());
 }
 
 #[test]
 fn pass_to_thread() {
     use std::thread;
 
-    let loader = Loader::new(Batcher::new(2));
+    let loader = Loader::new(Batcher::new(2)).cached();
     let l = loader.clone();
     let h = thread::spawn(move || {
         let v1 = l.load(1);
         let v2 = l.load(2);
         assert_eq!((10, 20), v1.join(v2).wait().unwrap());
     });
-
     let _ = h.join();
 }
