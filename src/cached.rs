@@ -39,6 +39,14 @@ impl<K, V, E> Loader<K, V, E>
     pub fn load_many(&self, keys: Vec<K>) -> JoinAll<Vec<LoadFuture<V, E>>> {
         join_all(keys.into_iter().map(|v| self.load(v)).collect())
     }
+
+    pub fn clear(&self, key: &K) {
+        self.cache.borrow_mut().remove(key);
+    }
+
+    pub fn clear_all(&self) {
+        self.cache.borrow_mut().clear();
+    }
 }
 
 pub struct LoadFuture<V, E>

@@ -6,17 +6,16 @@ Rust implementation of [Facebook's DataLoader](https://github.com/facebook/datal
 
 [Documentation](https://docs.rs/dataloader)
 
-## Status
-This project is a work in progress.
+## Features
  - [x] Batching load requests
- - [ ] Cache load result
+ - [x] Caching load results
 
 ## Usage
 Add to your Cargo.toml
 ```toml
 [dependencies]
 futures = "0.1"
-dataloader = "0.2"
+dataloader = "0.3"
 ```
 
 Add to your crate
@@ -40,6 +39,9 @@ impl BatchFn<i32, i32> for Batcher {
 
 fn main() {
     let loader = Loader::new(Batcher);
+    // change to a cached loader
+    // let loader = Loader::new(Batcher).cached();
+
     let v1 = loader.load(1);
     let v2 = loader.load(2);
     assert_eq!((10, 20), v1.join(v2).wait().unwrap());
