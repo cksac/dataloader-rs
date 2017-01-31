@@ -131,3 +131,18 @@ fn test_clear_all() {
     assert_eq!((2, 10), v3.wait().unwrap());
     assert_eq!((2, 20), v4.wait().unwrap());
 }
+
+#[test]
+fn test_prim() {
+    // batch size = 2, value will be (batch_fn call seq,  v * 10)
+    let loader = Loader::<i32, (usize, i32), ()>::new(Batcher::new(1)).cached();
+    loader.prime(1, (0, 101));
+    let v1 = loader.load(1);
+    let v2 = loader.load(2);
+    loader.prime(2, (0, 201)); // should have no effect as key 2 are loaded alredy
+    let v3 = loader.load(2);
+
+    assert_eq!((0, 101), v1.wait().unwrap());
+    assert_eq!((1, 20), v2.wait().unwrap());
+    assert_eq!((1, 20), v3.wait().unwrap());
+}

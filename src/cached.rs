@@ -14,7 +14,7 @@ pub struct Loader<K, V, E>
           E: Clone
 {
     loader: non_cached::Loader<K, V, E>,
-    cache: RefCell<BTreeMap<K, Shared<non_cached::LoadFuture<V, E>>>>,
+    cache: RefCell<BTreeMap<K, LoadFuture<V, E>>>,
 }
 
 impl<K, V, E> Loader<K, V, E>
@@ -25,14 +25,12 @@ impl<K, V, E> Loader<K, V, E>
     pub fn load(&self, key: K) -> LoadFuture<V, E> {
         match self.cache.borrow_mut().entry(key.clone()) {
             Entry::Vacant(v) => {
-                let f = self.loader.load(key).shared();
+                let shared = self.loader.load(key).shared();
+                let f = LoadFuture::Load(shared);
                 v.insert(f.clone());
-                LoadFuture { f: f }
+                f
             }
-            Entry::Occupied(e) => {
-                let f = e.get().clone();
-                LoadFuture { f: f }
-            }
+            Entry::Occupied(e) => e.get().clone(),
         }
     }
 
@@ -40,20 +38,31 @@ impl<K, V, E> Loader<K, V, E>
         join_all(keys.into_iter().map(|v| self.load(v)).collect())
     }
 
-    pub fn clear(&self, key: &K) {
-        self.cache.borrow_mut().remove(key);
+    pub fn clear(&self, key: &K) -> Option<LoadFuture<V, E>> {
+        self.cache.borrow_mut().remove(key)
     }
 
     pub fn clear_all(&self) {
         self.cache.borrow_mut().clear();
     }
+
+    pub fn prime(&self, key: K, val: V) {
+        match self.cache.borrow_mut().entry(key) {
+            Entry::Vacant(v) => {
+                v.insert(LoadFuture::Prime(val));
+            }
+            _ => {}
+        }
+    }
 }
 
-pub struct LoadFuture<V, E>
+#[derive(Clone)]
+pub enum LoadFuture<V, E>
     where V: Clone,
           E: Clone
 {
-    f: Shared<non_cached::LoadFuture<V, E>>,
+    Load(Shared<non_cached::LoadFuture<V, E>>),
+    Prime(V),
 }
 
 impl<V, E> Future for LoadFuture<V, E>
@@ -64,10 +73,15 @@ impl<V, E> Future for LoadFuture<V, E>
     type Error = LoadError<E>;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        match self.f.poll() {
-            Ok(Async::NotReady) => Ok(Async::NotReady),
-            Ok(Async::Ready(shared)) => Ok(Async::Ready(shared.clone())),
-            Err(e) => Err(e.clone()),
+        match *self {
+            LoadFuture::Load(ref mut f) => {
+                match f.poll() {
+                    Ok(Async::NotReady) => Ok(Async::NotReady),
+                    Ok(Async::Ready(shared)) => Ok(Async::Ready(shared.clone())),
+                    Err(e) => Err(e.clone()),
+                }
+            }
+            LoadFuture::Prime(ref v) => Ok(Async::Ready(v.clone())),
         }
     }
 }
