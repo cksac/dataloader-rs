@@ -1,14 +1,14 @@
 extern crate futures;
 extern crate dataloader;
 
-use dataloader::{Loader, BatchFn, LoadError};
+use dataloader::{Loader, BatchFn, BatchFuture, LoadError};
 use futures::Future;
-use futures::future::ok;
+use futures::future::{err, ok};
 
 struct Batcher;
 impl BatchFn<i32, i32> for Batcher {
-    type Error = LoadError;
-    fn load(&self, keys: &[i32]) -> Box<Future<Item = Vec<i32>, Error = Self::Error>> {
+    type Error = ();
+    fn load(&self, keys: &[i32]) -> BatchFuture<i32, Self::Error> {
         // println!("load batch {:?}", keys);
         ok(keys.into_iter().map(|v| v * 10).collect()).boxed()
     }
@@ -18,6 +18,38 @@ impl BatchFn<i32, i32> for Batcher {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+enum MyError {
+    Unknown,
+}
+
+struct BadBatcher;
+impl BatchFn<i32, i32> for BadBatcher {
+    type Error = MyError;
+    fn load(&self, _keys: &[i32]) -> BatchFuture<i32, Self::Error> {
+        // fail whole batch
+        err(MyError::Unknown).boxed()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum ValueError {
+    NotEven,
+}
+
+impl BatchFn<i32, Result<i32, ValueError>> for BadBatcher {
+    type Error = MyError;
+    fn load(&self, keys: &[i32]) -> BatchFuture<Result<i32, ValueError>, Self::Error> {
+        ok(keys.into_iter()
+                .map(|v| if v % 2 == 0 {
+                    Ok(v * 10)
+                } else {
+                    Err(ValueError::NotEven)
+                })
+                .collect())
+            .boxed()
+    }
+}
 
 #[test]
 fn smoke() {
@@ -59,4 +91,18 @@ fn nested_load_many() {
     let v2 = loader.load(4).map(|v| loader.load_many(vec![v, v + 1, v + 2]).wait().unwrap());
     let expected = (vec![300, 310, 320], vec![400, 410, 420]);
     assert_eq!(expected, v1.join(v2).wait().unwrap());
+}
+
+#[test]
+fn test_batch_fn_error() {
+    let loader = Loader::<i32, i32, MyError>::new(BadBatcher);
+    let v1 = loader.load(1).wait();
+    assert_eq!(LoadError::BatchFn(MyError::Unknown), v1.err().unwrap());
+}
+
+#[test]
+fn test_result_val() {
+    let loader = Loader::<i32, Result<i32, ValueError>, MyError>::new(BadBatcher);
+    let v1 = loader.load_many(vec![1, 2]).wait();
+    assert_eq!(vec![Err(ValueError::NotEven), Ok(20)], v1.unwrap());
 }

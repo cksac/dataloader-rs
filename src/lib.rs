@@ -10,21 +10,18 @@ use futures::sync::{mpsc, oneshot};
 use futures::future::{join_all, JoinAll};
 use tokio_core::reactor::Core;
 
-#[derive(Clone, Debug)]
-pub enum LoadError {
+#[derive(Clone, PartialEq, Debug)]
+pub enum LoadError<E> {
     SenderDropped,
-    Custom(String),
+    BatchFn(E),
 }
 
-impl LoadError {
-    pub fn custom<S: Into<String>>(s: S) -> LoadError {
-        LoadError::Custom(s.into())
-    }
-}
+pub type BatchFuture<V, E> = Box<Future<Item = Vec<V>, Error = E>>;
 
 pub trait BatchFn<K, V> {
-    type Error: Into<LoadError>;
-    fn load(&self, keys: &[K]) -> Box<Future<Item = Vec<V>, Error = Self::Error>>;
+    type Error;
+
+    fn load(&self, keys: &[K]) -> BatchFuture<V, Self::Error>;
 
     fn max_batch_size(&self) -> usize {
         200
@@ -32,12 +29,12 @@ pub trait BatchFn<K, V> {
 }
 
 #[derive(Clone)]
-pub struct Loader<K, V> {
-    tx: Arc<mpsc::UnboundedSender<Message<K, Result<V, LoadError>>>>,
+pub struct Loader<K, V, E> {
+    tx: Arc<mpsc::UnboundedSender<LoadMessage<K, V, E>>>,
 }
 
-impl<K, V> Loader<K, V> {
-    pub fn load(&self, key: K) -> LoadFuture<V> {
+impl<K, V, E> Loader<K, V, E> {
+    pub fn load(&self, key: K) -> LoadFuture<V, E> {
         let (tx, rx) = oneshot::channel();
         let msg = Message::LoadOne {
             key: key,
@@ -47,17 +44,18 @@ impl<K, V> Loader<K, V> {
         LoadFuture { rx: rx }
     }
 
-    pub fn load_many(&self, keys: Vec<K>) -> JoinAll<Vec<LoadFuture<V>>> {
+    pub fn load_many(&self, keys: Vec<K>) -> JoinAll<Vec<LoadFuture<V, E>>> {
         join_all(keys.into_iter().map(|v| self.load(v)).collect())
     }
 }
 
-impl<K, V> Loader<K, V>
+impl<K, V, E> Loader<K, V, E>
     where K: 'static + Send,
-          V: 'static + Send
+          V: 'static + Send,
+          E: 'static + Clone + Send
 {
-    pub fn new<F>(batch_fn: F) -> Loader<K, V>
-        where F: 'static + Send + BatchFn<K, V>
+    pub fn new<F>(batch_fn: F) -> Loader<K, V, E>
+        where F: 'static + Send + BatchFn<K, V, Error = E>
     {
         assert!(batch_fn.max_batch_size() > 0);
 
@@ -78,34 +76,32 @@ impl<K, V> Loader<K, V>
             };
 
             let load_fn = batch_fn.clone();
-            let loader =
-                batched.for_each(move |requests: Vec<(K,
-                                                      oneshot::Sender<Result<V, LoadError>>)>| {
-                    let (keys, replys) = requests.into_iter()
-                        .fold((Vec::new(), Vec::new()), |mut soa, i| {
-                            soa.0.push(i.0);
-                            soa.1.push(i.1);
-                            soa
-                        });
-                    let batch_job = load_fn.load(&keys).then(move |x| {
-                        match x {
-                            Ok(values) => {
-                                for r in replys.into_iter().zip(values) {
-                                    r.0.complete(Ok(r.1));
-                                }
-                            }
-                            Err(e) => {
-                                let err = e.into();
-                                for r in replys {
-                                    r.complete(Err(err.clone()));
-                                }
-                            }
-                        };
-                        Ok(())
+            let loader = batched.for_each(move |requests: Vec<LoadRequest<K, V, E>>| {
+                let (keys, replys) = requests.into_iter()
+                    .fold((Vec::new(), Vec::new()), |mut soa, i| {
+                        soa.0.push(i.0);
+                        soa.1.push(i.1);
+                        soa
                     });
-                    handle.spawn(batch_job);
+                let batch_job = load_fn.load(&keys).then(move |x| {
+                    match x {
+                        Ok(values) => {
+                            for r in replys.into_iter().zip(values) {
+                                r.0.complete(Ok(r.1));
+                            }
+                        }
+                        Err(e) => {
+                            let err = LoadError::BatchFn(e);
+                            for r in replys {
+                                r.complete(Err(err.clone()));
+                            }
+                        }
+                    };
                     Ok(())
                 });
+                handle.spawn(batch_job);
+                Ok(())
+            });
             let _ = core.run(loader);
 
             // Run until all batch jobs completed
@@ -116,13 +112,13 @@ impl<K, V> Loader<K, V>
     }
 }
 
-pub struct LoadFuture<V> {
-    rx: oneshot::Receiver<Result<V, LoadError>>,
+pub struct LoadFuture<V, E> {
+    rx: oneshot::Receiver<Result<V, LoadError<E>>>,
 }
 
-impl<V> Future for LoadFuture<V> {
+impl<V, E> Future for LoadFuture<V, E> {
     type Item = V;
-    type Error = LoadError;
+    type Error = LoadError<E>;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         match self.rx.poll() {
@@ -134,20 +130,23 @@ impl<V> Future for LoadFuture<V> {
     }
 }
 
+type LoadRequest<K, V, E> = (K, oneshot::Sender<Result<V, LoadError<E>>>);
+type LoadMessage<K, V, E> = Message<K, Result<V, LoadError<E>>>;
+
 enum Message<K, V> {
     LoadOne { key: K, reply: oneshot::Sender<V> },
 }
 
-struct Batched<K, V> {
-    rx: mpsc::UnboundedReceiver<Message<K, Result<V, LoadError>>>,
+struct Batched<K, V, E> {
+    rx: mpsc::UnboundedReceiver<LoadMessage<K, V, E>>,
     max_batch_size: usize,
-    items: Vec<(K, oneshot::Sender<Result<V, LoadError>>)>,
+    items: Vec<LoadRequest<K, V, E>>,
     channel_closed: bool,
 }
 
-impl<K, V> Stream for Batched<K, V> {
-    type Item = Vec<(K, oneshot::Sender<Result<V, LoadError>>)>;
-    type Error = LoadError;
+impl<K, V, E> Stream for Batched<K, V, E> {
+    type Item = Vec<LoadRequest<K, V, E>>;
+    type Error = LoadError<E>;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
         if self.channel_closed {
