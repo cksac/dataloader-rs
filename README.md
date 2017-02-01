@@ -1,6 +1,7 @@
 # Dataloader
 [![Build Status](https://travis-ci.org/cksac/dataloader-rs.svg?branch=master)](https://travis-ci.org/cksac/dataloader-rs)
 [![Crates.io](https://img.shields.io/crates/v/dataloader.svg)](https://crates.io/crates/dataloader)
+[![Coverage Status](https://coveralls.io/repos/cksac/dataloader-rs/badge.svg?branch=master)](https://coveralls.io/r/cksac/dataloader-rs?branch=master)
 
 Rust implementation of [Facebook's DataLoader](https://github.com/facebook/dataloader) using futures and tokio-core.
 
