@@ -1,9 +1,11 @@
 extern crate futures;
 extern crate dataloader;
+extern crate tokio_core;
 
 use dataloader::{Loader, LoadError};
 
 use futures::Future;
+use tokio_core::reactor::Core;
 
 mod common;
 use common::batcher::*;
@@ -98,6 +100,18 @@ fn pass_to_thread() {
         assert_eq!((10, 20), v1.join(v2).wait().unwrap());
     });
     let _ = h.join();
+}
+
+#[test]
+fn test_run_by_core() {
+    let mut core = Core::new().unwrap();
+    let loader = Loader::new(Batcher::new(10)).cached();
+    let v1 = loader.load(3).and_then(|v| loader.load_many(vec![v, v + 1, v + 2]));
+    let v2 = loader.load(4).and_then(|v| loader.load_many(vec![v, v + 1, v + 2]));
+    let all = v1.join(v2);
+    let output = core.run(all).unwrap();
+    let expected = (vec![300, 310, 320], vec![400, 410, 420]);
+    assert_eq!(expected, output);
 }
 
 #[test]
