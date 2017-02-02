@@ -119,7 +119,7 @@ fn pass_to_thread() {
 #[test]
 fn test_run_by_core() {
     let mut core = Core::new().unwrap();
-    let loader = Loader::new(Batcher::new(10)).cached();
+    let loader = Loader::new(Batcher::new(10));
     let v1 = loader.load(3).and_then(|v| loader.load_many(vec![v, v + 1, v + 2]));
     let v2 = loader.load(4).and_then(|v| loader.load_many(vec![v, v + 1, v + 2]));
     let all = v1.join(v2);

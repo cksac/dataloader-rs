@@ -1,6 +1,8 @@
 use {BatchFn, BatchFuture};
 
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::thread;
+use std::time::Duration;
 use futures::Future;
 use futures::future::{err, ok};
 
@@ -25,6 +27,7 @@ impl BatchFn<i32, i32> for Batcher {
     type Error = ();
     fn load(&self, keys: &[i32]) -> BatchFuture<i32, Self::Error> {
         self.invoke_cnt.fetch_add(1, Ordering::SeqCst);
+        thread::sleep(Duration::from_millis(50)); // Some works
         ok(keys.into_iter().map(|v| v * 10).collect()).boxed()
     }
 
@@ -38,6 +41,7 @@ impl BatchFn<i32, (usize, i32)> for Batcher {
     type Error = ();
     fn load(&self, keys: &[i32]) -> BatchFuture<(usize, i32), Self::Error> {
         let seq = self.invoke_cnt.fetch_add(1, Ordering::SeqCst);
+        thread::sleep(Duration::from_millis(50)); // Some works
         ok(keys.into_iter().map(|v| (seq + 1, v * 10)).collect()).boxed()
     }
 
