@@ -2,11 +2,21 @@ use loader as non_cached;
 use loader::LoadError;
 
 use std::cell::RefCell;
+use std::sync::{Arc, Mutex};
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 
 use futures::{Future, Poll, Async};
 use futures::future::{join_all, JoinAll, Shared};
+
+fn _assert_kinds() {
+    fn _assert_send<T: Send>() {}
+    fn _assert_sync<T: Sync>() {}
+    fn _assert_clone<T: Clone>() {}
+    _assert_send::<Loader<u32, u32, u32>>();
+    _assert_sync::<Loader<u32, u32, u32>>();
+    _assert_clone::<Loader<u32, u32, u32>>();
+}
 
 #[derive(Clone)]
 pub struct Loader<K, V, E>
@@ -14,7 +24,7 @@ pub struct Loader<K, V, E>
           E: Clone
 {
     loader: non_cached::Loader<K, V, E>,
-    cache: RefCell<BTreeMap<K, LoadFuture<V, E>>>,
+    cache: Arc<Mutex<BTreeMap<K, LoadFuture<V, E>>>>,
 }
 
 impl<K, V, E> Loader<K, V, E>
@@ -23,7 +33,8 @@ impl<K, V, E> Loader<K, V, E>
           E: Clone
 {
     pub fn load(&self, key: K) -> LoadFuture<V, E> {
-        match self.cache.borrow_mut().entry(key.clone()) {
+        let mut cache = self.cache.lock().unwrap();
+        match cache.entry(key.clone()) {
             Entry::Vacant(v) => {
                 let shared = self.loader.load(key).shared();
                 let f = LoadFuture::Load(shared);
@@ -39,15 +50,18 @@ impl<K, V, E> Loader<K, V, E>
     }
 
     pub fn clear(&self, key: &K) -> Option<LoadFuture<V, E>> {
-        self.cache.borrow_mut().remove(key)
+        let mut cache = self.cache.lock().unwrap();
+        cache.remove(key)
     }
 
     pub fn clear_all(&self) {
-        self.cache.borrow_mut().clear();
+        let mut cache = self.cache.lock().unwrap();
+        cache.clear();
     }
 
     pub fn prime(&self, key: K, val: V) {
-        if let Entry::Vacant(v) = self.cache.borrow_mut().entry(key) {
+        let mut cache = self.cache.lock().unwrap();
+        if let Entry::Vacant(v) = cache.entry(key) {
             v.insert(LoadFuture::Prime(val));
         }
     }
@@ -91,7 +105,7 @@ impl<K, V, E> Loader<K, V, E>
     pub fn new(loader: non_cached::Loader<K, V, E>) -> Loader<K, V, E> {
         Loader {
             loader: loader,
-            cache: RefCell::new(BTreeMap::new()),
+            cache: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 }

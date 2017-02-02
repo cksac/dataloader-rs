@@ -92,14 +92,24 @@ fn test_batch_call_seq() {
 fn pass_to_thread() {
     use std::thread;
 
-    let loader = Loader::new(Batcher::new(2)).cached();
+    let loader = Loader::new(Batcher::new(4)).cached();
+
     let l = loader.clone();
-    let h = thread::spawn(move || {
+    let h1 = thread::spawn(move || {
         let v1 = l.load(1);
         let v2 = l.load(2);
         assert_eq!((10, 20), v1.join(v2).wait().unwrap());
     });
-    let _ = h.join();
+
+    let l2 = loader.clone();
+    let h2 = thread::spawn(move || {
+        let v1 = l2.load(1);
+        let v2 = l2.load(2);
+        assert_eq!((10, 20), v1.join(v2).wait().unwrap());
+    });
+
+    let _ = h1.join();
+    let _ = h2.join();
 }
 
 #[test]

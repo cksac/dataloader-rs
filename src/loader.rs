@@ -9,6 +9,15 @@ use futures::sync::{mpsc, oneshot};
 use futures::future::{join_all, JoinAll};
 use tokio_core::reactor::Core;
 
+fn _assert_kinds() {
+    fn _assert_send<T: Send>() {}
+    fn _assert_sync<T: Sync>() {}
+    fn _assert_clone<T: Clone>() {}
+    _assert_send::<Loader<u32, u32, u32>>();
+    _assert_sync::<Loader<u32, u32, u32>>();
+    _assert_clone::<Loader<u32, u32, u32>>();
+}
+
 #[derive(Clone, PartialEq, Debug)]
 pub enum LoadError<E> {
     SenderDropped,
