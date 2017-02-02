@@ -26,8 +26,7 @@ before_script:
 script:
   - |
       travis-cargo build &&
-      travis-cargo test &&
-      travis-cargo bench;
+      travis-cargo test;
 
 # Send coverage reports and upload docs
 after_success:
@@ -35,6 +34,12 @@ after_success:
       if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
       travis-cargo --only stable coveralls --no-sudo --verify;
       fi
+
+env:
+  global:
+    # trigger
+    # override the default `--features unstable` used for the nightly branch (optional)
+    - TRAVIS_CARGO_NIGHTLY_FEATURE=nightly
 
 notifications:
   email: false
