@@ -1,22 +1,24 @@
-sudo: false
 language: rust
-addons:
-  apt:
-    packages:
-      - libcurl4-openssl-dev
-      - libelf-dev
-      - libdw-dev
-      - binutils-dev
+
 rust:
   - nightly
   - stable
-before_script:
-  - pip install 'travis-cargo<0.2' --user && export PATH=$HOME/.local/bin:$PATH
+
 script:
-  - cargo build 
-  - cargo test 
-  - cargo bench
-after_success:
-  - travis-cargo coveralls --no-sudo --verify
+- cargo build
+- cargo test
+
+after_success: |
+  sudo apt-get install libcurl4-openssl-dev libelf-dev libdw-dev &&
+  wget https://github.com/SimonKagstrom/kcov/archive/master.tar.gz &&
+  tar xzf master.tar.gz &&
+  mkdir kcov-master/build &&
+  cd kcov-master/build &&
+  cmake .. &&
+  make &&
+  sudo make install &&
+  cd ../.. &&
+  kcov --coveralls-id=$TRAVIS_JOB_ID --exclude-pattern=/.cargo target/kcov target/debug/dataloader-*;
+
 notifications:
   email: false
