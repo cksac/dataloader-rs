@@ -1,3 +1,4 @@
+use {BatchFn, LoadError};
 use cached;
 
 use std::mem;
@@ -9,32 +10,6 @@ use futures::sync::{mpsc, oneshot};
 use futures::future::{join_all, JoinAll};
 use tokio_core::reactor::Core;
 
-fn _assert_kinds() {
-    fn _assert_send<T: Send>() {}
-    fn _assert_sync<T: Sync>() {}
-    fn _assert_clone<T: Clone>() {}
-    _assert_send::<Loader<u32, u32, u32>>();
-    _assert_sync::<Loader<u32, u32, u32>>();
-    _assert_clone::<Loader<u32, u32, u32>>();
-}
-
-#[derive(Clone, PartialEq, Debug)]
-pub enum LoadError<E> {
-    SenderDropped,
-    BatchFn(E),
-}
-
-pub type BatchFuture<V, E> = Box<Future<Item = Vec<V>, Error = E>>;
-
-pub trait BatchFn<K, V> {
-    type Error;
-
-    fn load(&self, keys: &[K]) -> BatchFuture<V, Self::Error>;
-
-    fn max_batch_size(&self) -> usize {
-        200
-    }
-}
 
 #[derive(Clone)]
 pub struct Loader<K, V, E> {
@@ -176,7 +151,7 @@ impl<K, V, E> Stream for Batched<K, V, E> {
                     } else {
                         let batch = mem::replace(&mut self.items, Vec::new());
                         Ok(Some(batch).into())
-                    };
+                    }
                 }
                 Ok(Async::Ready(Some(msg))) => {
                     match msg {
@@ -196,7 +171,7 @@ impl<K, V, E> Stream for Batched<K, V, E> {
                     } else {
                         let batch = mem::replace(&mut self.items, Vec::new());
                         Ok(Some(batch).into())
-                    };
+                    }
                 }
                 Err(_) => {
                     return if self.items.is_empty() {
@@ -205,7 +180,7 @@ impl<K, V, E> Stream for Batched<K, V, E> {
                         self.channel_closed = true;
                         let batch = mem::replace(&mut self.items, Vec::new());
                         Ok(Some(batch).into())
-                    };
+                    }
                 }
             }
         }

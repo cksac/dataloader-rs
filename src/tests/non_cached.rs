@@ -1,14 +1,18 @@
-extern crate futures;
-extern crate dataloader;
-extern crate tokio_core;
-
-use dataloader::{Loader, LoadError};
+use tests::*;
+use {Loader, LoadError};
 
 use futures::Future;
 use tokio_core::reactor::Core;
 
-mod common;
-use common::batcher::*;
+#[test]
+fn assert_kinds() {
+    fn _assert_send<T: Send>() {}
+    fn _assert_sync<T: Sync>() {}
+    fn _assert_clone<T: Clone>() {}
+    _assert_send::<Loader<u32, u32, u32>>();
+    _assert_sync::<Loader<u32, u32, u32>>();
+    _assert_clone::<Loader<u32, u32, u32>>();
+}
 
 #[test]
 fn smoke() {

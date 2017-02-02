@@ -1,8 +1,11 @@
-use dataloader::{BatchFn, BatchFuture};
+use {BatchFn, BatchFuture};
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use futures::Future;
 use futures::future::{err, ok};
+
+mod non_cached;
+mod cached;
 
 pub struct Batcher {
     invoke_cnt: AtomicUsize,
@@ -21,7 +24,6 @@ impl Batcher {
 impl BatchFn<i32, i32> for Batcher {
     type Error = ();
     fn load(&self, keys: &[i32]) -> BatchFuture<i32, Self::Error> {
-        // println!("load keys {:?}", keys);
         self.invoke_cnt.fetch_add(1, Ordering::SeqCst);
         ok(keys.into_iter().map(|v| v * 10).collect()).boxed()
     }
@@ -35,7 +37,6 @@ impl BatchFn<i32, i32> for Batcher {
 impl BatchFn<i32, (usize, i32)> for Batcher {
     type Error = ();
     fn load(&self, keys: &[i32]) -> BatchFuture<(usize, i32), Self::Error> {
-        // println!("load keys {:?}", keys);
         let seq = self.invoke_cnt.fetch_add(1, Ordering::SeqCst);
         ok(keys.into_iter().map(|v| (seq + 1, v * 10)).collect()).boxed()
     }
@@ -54,7 +55,6 @@ pub struct BadBatcher;
 impl BatchFn<i32, i32> for BadBatcher {
     type Error = MyError;
     fn load(&self, _keys: &[i32]) -> BatchFuture<i32, Self::Error> {
-        // fail whole batch
         err(MyError::Unknown).boxed()
     }
 }

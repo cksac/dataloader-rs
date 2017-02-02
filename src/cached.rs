@@ -1,5 +1,5 @@
-use loader as non_cached;
-use loader::LoadError;
+use LoadError;
+use non_cached;
 
 use std::sync::{Arc, Mutex};
 use std::collections::BTreeMap;
@@ -8,14 +8,6 @@ use std::collections::btree_map::Entry;
 use futures::{Future, Poll, Async};
 use futures::future::{join_all, JoinAll, Shared};
 
-fn _assert_kinds() {
-    fn _assert_send<T: Send>() {}
-    fn _assert_sync<T: Sync>() {}
-    fn _assert_clone<T: Clone>() {}
-    _assert_send::<Loader<u32, u32, u32>>();
-    _assert_sync::<Loader<u32, u32, u32>>();
-    _assert_clone::<Loader<u32, u32, u32>>();
-}
 
 #[derive(Clone)]
 pub struct Loader<K, V, E>
