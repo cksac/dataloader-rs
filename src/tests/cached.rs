@@ -2,6 +2,9 @@ use tests::*;
 use {Loader, LoadError};
 use cached;
 
+use std::thread;
+use std::time::Duration;
+
 use futures::Future;
 use tokio_core::reactor::Core;
 
@@ -39,6 +42,29 @@ fn smoke() {
         assert_eq!((300, 400), v1.join(v2).wait().unwrap());
     }
 }
+
+#[test]
+fn drop_loader() {
+    let all = {
+        let loader = Loader::new(Batcher::new(10)).cached();
+        let v1 = loader.load(1);
+        let v2 = loader.load(2);
+        drop(loader);
+        v1.join(v2)
+    };
+    thread::sleep(Duration::from_millis(200));
+    assert_eq!((10, 20), all.wait().unwrap());
+}
+
+#[test]
+fn dispatch_partial_batch() {
+    let loader = Loader::new(Batcher::new(10)).cached();
+    let v1 = loader.load(1);
+    let v2 = loader.load(2);
+    thread::sleep(Duration::from_millis(200));
+    assert_eq!((10, 20), v1.join(v2).wait().unwrap());
+}
+
 
 #[test]
 fn nested_load() {
