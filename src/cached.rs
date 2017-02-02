@@ -1,7 +1,6 @@
 use loader as non_cached;
 use loader::LoadError;
 
-use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
