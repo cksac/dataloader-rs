@@ -1,5 +1,6 @@
 use tests::*;
 use {Loader, LoadError};
+use cached;
 
 use futures::Future;
 use tokio_core::reactor::Core;
