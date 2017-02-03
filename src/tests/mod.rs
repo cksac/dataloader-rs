@@ -31,7 +31,7 @@ impl BatchFn<i32, i32> for Batcher {
     type Error = ();
     fn load(&self, keys: &[i32]) -> BatchFuture<i32, Self::Error> {
         self.invoke_cnt.fetch_add(1, Ordering::SeqCst);
-        thread::sleep(Duration::from_millis(50)); // Some works
+        thread::sleep(Duration::from_millis(200)); // Some works
         ok(keys.into_iter().map(|v| v * 10).collect()).boxed()
     }
 
@@ -45,7 +45,7 @@ impl BatchFn<i32, (usize, i32)> for Batcher {
     type Error = ();
     fn load(&self, keys: &[i32]) -> BatchFuture<(usize, i32), Self::Error> {
         let seq = self.invoke_cnt.fetch_add(1, Ordering::SeqCst);
-        thread::sleep(Duration::from_millis(50)); // Some works
+        thread::sleep(Duration::from_millis(200)); // Some works
         ok(keys.into_iter().map(|v| (seq + 1, v * 10)).collect()).boxed()
     }
 
