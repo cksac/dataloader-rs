@@ -14,7 +14,7 @@ after_success: |
   make &&
   sudo make install &&
   cd ../.. &&
-  kcov --verify --coveralls-id=$TRAVIS_JOB_ID --exclude-pattern=/.cargo,/src/tests --include-pattern=/src target/kcov target/debug/dataloader-*;
+  kcov --verify --coveralls-id=$TRAVIS_JOB_ID --exclude-pattern=/.cargo target/kcov target/debug/dataloader-*;
 
 notifications:
   email: false

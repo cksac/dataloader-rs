@@ -15,8 +15,8 @@ fn assert_kinds() {
     fn _assert_sync<T: Sync>() {}
     fn _assert_clone<T: Clone>() {}
     _assert_send::<cached::Loader<u32, u32, u32, BTreeMap<u32, cached::LoadFuture<u32, u32>>>>();
-    _assert_send::<cached::Loader<u32, u32, u32, BTreeMap<u32, cached::LoadFuture<u32, u32>>>>();
     _assert_sync::<cached::Loader<u32, u32, u32, BTreeMap<u32, cached::LoadFuture<u32, u32>>>>();
+    _assert_clone::<cached::Loader<u32, u32, u32, BTreeMap<u32, cached::LoadFuture<u32, u32>>>>();
 }
 
 #[test]
@@ -162,12 +162,11 @@ fn test_clear() {
     let loader = Loader::<i32, (usize, i32), ()>::new(Batcher::new(1)).cached();
     let v1 = loader.load(1);
     let v2 = loader.load(1);
+    assert_eq!((1, 10), v1.wait().unwrap());
+    assert_eq!((1, 10), v2.wait().unwrap());
 
     loader.remove(&1);
     let v3 = loader.load(1);
-
-    assert_eq!((1, 10), v1.wait().unwrap());
-    assert_eq!((1, 10), v2.wait().unwrap());
     assert_eq!((2, 10), v3.wait().unwrap());
 }
 
@@ -177,13 +176,12 @@ fn test_clear_all() {
     let loader = Loader::<i32, (usize, i32), ()>::new(Batcher::new(2)).cached();
     let v1 = loader.load(1);
     let v2 = loader.load(2);
+    assert_eq!((1, 10), v1.wait().unwrap());
+    assert_eq!((1, 20), v2.wait().unwrap());
 
     loader.clear();
     let v3 = loader.load(1);
     let v4 = loader.load(2);
-
-    assert_eq!((1, 10), v1.wait().unwrap());
-    assert_eq!((1, 20), v2.wait().unwrap());
     assert_eq!((2, 10), v3.wait().unwrap());
     assert_eq!((2, 20), v4.wait().unwrap());
 }
@@ -209,13 +207,12 @@ fn test_custom_cache() {
     let loader = Loader::<i32, (usize, i32), ()>::new(Batcher::new(2)).with_cache(MyCache::new());
     let v1 = loader.load(1);
     let v2 = loader.load(2);
+    assert_eq!((1, 10), v1.wait().unwrap());
+    assert_eq!((1, 20), v2.wait().unwrap());
 
     loader.clear();
     let v3 = loader.load(1);
     let v4 = loader.load(2);
-
-    assert_eq!((1, 10), v1.wait().unwrap());
-    assert_eq!((1, 20), v2.wait().unwrap());
     assert_eq!((2, 10), v3.wait().unwrap());
     assert_eq!((2, 20), v4.wait().unwrap());
 }
