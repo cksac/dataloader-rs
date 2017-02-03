@@ -1,13 +1,17 @@
 use {BatchFn, BatchFuture};
+use cached;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
+use std::collections::HashMap;
+use std::hash::Hash;
+
 use futures::Future;
 use futures::future::{err, ok};
 
-mod non_cached;
-mod cached;
+mod non_cached_loader;
+mod cached_loader;
 
 pub struct Batcher {
     invoke_cnt: AtomicUsize,
@@ -79,5 +83,40 @@ impl BatchFn<i32, Result<i32, ValueError>> for BadBatcher {
                 })
                 .collect())
             .boxed()
+    }
+}
+
+pub struct MyCache<K, V>(HashMap<K, V>);
+impl<K, V> MyCache<K, V>
+    where K: Ord + Hash,
+          V: Clone
+{
+    pub fn new() -> MyCache<K, V> {
+        MyCache(HashMap::new())
+    }
+}
+
+impl<K, V> cached::Cache<K, V> for MyCache<K, V>
+    where K: Ord + Hash,
+          V: Clone
+{
+    fn contains_key(&self, key: &K) -> bool {
+        HashMap::contains_key(&self.0, key)
+    }
+
+    fn get(&self, key: &K) -> Option<V> {
+        HashMap::get(&self.0, key).map(|v| v.clone())
+    }
+
+    fn insert(&mut self, key: K, value: V) {
+        HashMap::insert(&mut self.0, key, value);
+    }
+
+    fn remove(&mut self, key: &K) -> Option<V> {
+        HashMap::remove(&mut self.0, key)
+    }
+
+    fn clear(&mut self) {
+        HashMap::clear(&mut self.0);
     }
 }

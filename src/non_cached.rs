@@ -4,6 +4,7 @@ use cached;
 use std::mem;
 use std::thread;
 use std::sync::Arc;
+use std::collections::BTreeMap;
 
 use futures::{Stream, Future, Poll, Async};
 use futures::sync::{mpsc, oneshot};
@@ -31,12 +32,21 @@ impl<K, V, E> Loader<K, V, E> {
         join_all(keys.into_iter().map(|v| self.load(v)).collect())
     }
 
-    pub fn cached(self) -> cached::Loader<K, V, E>
+    pub fn cached(self) -> cached::Loader<K, V, E, BTreeMap<K, cached::LoadFuture<V, E>>>
         where K: Clone + Ord,
               V: Clone,
               E: Clone
     {
         cached::Loader::new(self)
+    }
+
+    pub fn with_cache<C>(self, cache: C) -> cached::Loader<K, V, E, C>
+        where K: Clone + Ord,
+              V: Clone,
+              E: Clone,
+              C: cached::Cache<K, cached::LoadFuture<V, E>>
+    {
+        cached::Loader::with_cache(self, cache)
     }
 }
 
