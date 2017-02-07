@@ -109,6 +109,8 @@ fn test_batch_call_seq() {
     let v5 = loader.load(1);
     let v6 = loader.load(2);
 
+    thread::sleep(Duration::from_millis(200));
+
     //v1 and v2 should be in first batch
     assert_eq!((1, 10), v1.wait().unwrap());
     assert_eq!((1, 20), v2.wait().unwrap());
@@ -122,8 +124,6 @@ fn test_batch_call_seq() {
 
 #[test]
 fn pass_to_thread() {
-    use std::thread;
-
     let loader = Loader::new(Batcher::new(4)).cached();
 
     let l = loader.clone();
