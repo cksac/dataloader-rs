@@ -87,8 +87,18 @@ impl<K, V, E> Loader<K, V, E>
                 let batch_job = load_fn.load(&keys).then(move |x| {
                     match x {
                         Ok(values) => {
-                            for r in replys.into_iter().zip(values) {
-                                r.0.complete(Ok(r.1));
+                            if keys.len() != values.len() {
+                                for r in replys {
+                                    let err = LoadError::UnequalKeyValueSize {
+                                        key_count: keys.len(),
+                                        value_count: values.len(),
+                                    };
+                                    r.complete(Err(err.clone()));
+                                }
+                            } else {
+                                for r in replys.into_iter().zip(values) {
+                                    r.0.complete(Ok(r.1));
+                                }
                             }
                         }
                         Err(e) => {

@@ -82,6 +82,14 @@ impl BatchFn<i32, Result<i32, ValueError>> for BadBatcher {
     }
 }
 
+impl BatchFn<i32, ()> for BadBatcher {
+    type Error = ();
+    fn load(&self, _keys: &[i32]) -> BatchFuture<(), Self::Error> {
+        //always return less values compared to request keys
+        ok(vec![]).boxed()
+    }
+}
+
 pub struct MyCache<K, V>(HashMap<K, V>);
 impl<K, V> MyCache<K, V>
     where K: Ord + Hash,

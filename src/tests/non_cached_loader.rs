@@ -152,3 +152,20 @@ fn test_run_by_core() {
     let expected = (vec![300, 310, 320], vec![400, 410, 420]);
     assert_eq!(expected, output);
 }
+
+#[test]
+fn test_values_length() {
+    let loader = Loader::<i32, (), ()>::new(BadBatcher);
+    let v1 = loader.load(1);
+    let v2 = loader.load(2);
+    assert_eq!(LoadError::UnequalKeyValueSize {
+                   key_count: 2,
+                   value_count: 0,
+               },
+               v1.wait().err().unwrap());
+    assert_eq!(LoadError::UnequalKeyValueSize {
+                   key_count: 2,
+                   value_count: 0,
+               },
+               v2.wait().err().unwrap());
+}

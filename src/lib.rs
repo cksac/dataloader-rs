@@ -14,6 +14,10 @@ mod tests;
 #[derive(Clone, PartialEq, Debug)]
 pub enum LoadError<E> {
     SenderDropped,
+    UnequalKeyValueSize {
+        key_count: usize,
+        value_count: usize,
+    },
     BatchFn(E),
 }
 
