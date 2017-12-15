@@ -5,7 +5,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::HashMap;
 use std::hash::Hash;
 
-use futures::Future;
 use futures::future::{err, ok};
 
 mod non_cached_loader;
@@ -29,7 +28,7 @@ impl BatchFn<i32, i32> for Batcher {
     type Error = ();
     fn load(&self, keys: &[i32]) -> BatchFuture<i32, Self::Error> {
         self.invoke_cnt.fetch_add(1, Ordering::SeqCst);
-        ok(keys.into_iter().map(|v| v * 10).collect()).boxed()
+        Box::new(ok(keys.into_iter().map(|v| v * 10).collect()))
     }
 
     fn max_batch_size(&self) -> usize {
@@ -42,7 +41,7 @@ impl BatchFn<i32, (usize, i32)> for Batcher {
     type Error = ();
     fn load(&self, keys: &[i32]) -> BatchFuture<(usize, i32), Self::Error> {
         let seq = self.invoke_cnt.fetch_add(1, Ordering::SeqCst);
-        ok(keys.into_iter().map(|v| (seq + 1, v * 10)).collect()).boxed()
+        Box::new(ok(keys.into_iter().map(|v| (seq + 1, v * 10)).collect()))
     }
 
     fn max_batch_size(&self) -> usize {
@@ -59,7 +58,7 @@ pub struct BadBatcher;
 impl BatchFn<i32, i32> for BadBatcher {
     type Error = MyError;
     fn load(&self, _keys: &[i32]) -> BatchFuture<i32, Self::Error> {
-        err(MyError::Unknown).boxed()
+        Box::new(err(MyError::Unknown))
     }
 }
 
@@ -71,14 +70,14 @@ pub enum ValueError {
 impl BatchFn<i32, Result<i32, ValueError>> for BadBatcher {
     type Error = MyError;
     fn load(&self, keys: &[i32]) -> BatchFuture<Result<i32, ValueError>, Self::Error> {
-        ok(keys.into_iter()
+        Box::new(ok(keys.into_iter()
                 .map(|v| if v % 2 == 0 {
                     Ok(v * 10)
                 } else {
                     Err(ValueError::NotEven)
                 })
                 .collect())
-            .boxed()
+            )
     }
 }
 
@@ -86,7 +85,7 @@ impl BatchFn<i32, ()> for BadBatcher {
     type Error = ();
     fn load(&self, _keys: &[i32]) -> BatchFuture<(), Self::Error> {
         //always return less values compared to request keys
-        ok(vec![]).boxed()
+        Box::new(ok(vec![]))
     }
 }
 

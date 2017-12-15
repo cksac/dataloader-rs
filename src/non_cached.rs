@@ -24,7 +24,7 @@ impl<K, V, E> Loader<K, V, E> {
             key: key,
             reply: tx,
         };
-        let _ = self.tx.send(msg);
+        let _ = self.tx.unbounded_send(msg);
         LoadFuture { rx: rx }
     }
 
@@ -93,18 +93,18 @@ impl<K, V, E> Loader<K, V, E>
                                         key_count: keys.len(),
                                         value_count: values.len(),
                                     };
-                                    r.complete(Err(err.clone()));
+                                   let _ =  r.send(Err(err.clone()));
                                 }
                             } else {
                                 for r in replys.into_iter().zip(values) {
-                                    r.0.complete(Ok(r.1));
+                                   let _ =  r.0.send(Ok(r.1));
                                 }
                             }
                         }
                         Err(e) => {
                             let err = LoadError::BatchFn(e);
                             for r in replys {
-                                r.complete(Err(err.clone()));
+                                let _ = r.send(Err(err.clone()));
                             }
                         }
                     };

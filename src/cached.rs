@@ -79,8 +79,8 @@ impl<V, E> Future for LoadFuture<V, E>
             LoadFuture::Load(ref mut f) => {
                 match f.poll() {
                     Ok(Async::NotReady) => Ok(Async::NotReady),
-                    Ok(Async::Ready(shared)) => Ok(Async::Ready(shared.clone())),
-                    Err(e) => Err(e.clone()),
+                    Ok(Async::Ready(shared)) => Ok(Async::Ready((*shared).clone())),
+                    Err(e) => Err((*e).clone()),
                 }
             }
             LoadFuture::Prime(ref v) => Ok(Async::Ready(v.clone())),

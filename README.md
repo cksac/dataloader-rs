@@ -1,4 +1,5 @@
 # Dataloader
+
 [![Build Status](https://travis-ci.org/cksac/dataloader-rs.svg?branch=master)](https://travis-ci.org/cksac/dataloader-rs)
 [![Crates.io](https://img.shields.io/crates/v/dataloader.svg)](https://crates.io/crates/dataloader)
 [![Coverage Status](https://coveralls.io/repos/github/cksac/dataloader-rs/badge.svg?branch=master)](https://coveralls.io/github/cksac/dataloader-rs?branch=master)
@@ -8,16 +9,18 @@ Rust implementation of [Facebook's DataLoader](https://github.com/facebook/datal
 [Documentation](https://docs.rs/dataloader)
 
 ## Features
- - [x] Batching load requests
- - [x] Caching load results
+
+* [x] Batching load requests
+* [x] Caching load results
 
 ## Usage
+
 Add to your Cargo.toml
 
 ```toml
 [dependencies]
 futures = "0.1"
-dataloader = "0.5"
+dataloader = "0.6"
 ```
 
 Add to your crate

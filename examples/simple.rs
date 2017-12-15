@@ -11,7 +11,7 @@ impl BatchFn<i32, i32> for Batcher {
 
     fn load(&self, keys: &[i32]) -> BatchFuture<i32, Self::Error> {
         println!("load batch {:?}", keys);
-        ok(keys.into_iter().map(|v| v * 10).collect()).boxed()
+        Box::new(ok(keys.into_iter().map(|v| v * 10).collect()))
     }
 }
 
