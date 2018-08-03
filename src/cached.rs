@@ -96,7 +96,7 @@ impl<K, V, E, C> Loader<K, V, E, C>
 {
     pub fn with_cache(loader: non_cached::Loader<K, V, E>, cache: C) -> Self {
         Loader {
-            loader: loader,
+            loader,
             cache: Arc::new(Mutex::new(cache)),
         }
     }

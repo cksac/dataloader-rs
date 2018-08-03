@@ -21,11 +21,11 @@ impl<K, V, E> Loader<K, V, E> {
     pub fn load(&self, key: K) -> LoadFuture<V, E> {
         let (tx, rx) = oneshot::channel();
         let msg = Message::LoadOne {
-            key: key,
+            key,
             reply: tx,
         };
         let _ = self.tx.unbounded_send(msg);
-        LoadFuture { rx: rx }
+        LoadFuture { rx }
     }
 
     pub fn load_many(&self, keys: Vec<K>) -> JoinAll<Vec<LoadFuture<V, E>>> {
@@ -70,7 +70,7 @@ impl<K, V, E> Loader<K, V, E>
             let handle = core.handle();
 
             let batched = Batched {
-                rx: rx,
+                rx,
                 max_batch_size: batch_fn.max_batch_size(),
                 items: Vec::with_capacity(batch_fn.max_batch_size()),
                 channel_closed: false,
