@@ -1,14 +1,14 @@
-use {BatchFn, BatchFuture};
 use cached;
+use {BatchFn, BatchFuture};
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::future::{err, ok};
 
-mod non_cached_loader;
 mod cached_loader;
+mod non_cached_loader;
 
 pub struct Batcher {
     invoke_cnt: AtomicUsize,
@@ -70,14 +70,15 @@ pub enum ValueError {
 impl BatchFn<i32, Result<i32, ValueError>> for BadBatcher {
     type Error = MyError;
     fn load(&self, keys: &[i32]) -> BatchFuture<Result<i32, ValueError>, Self::Error> {
-        Box::new(ok(keys.into_iter()
-                .map(|v| if v % 2 == 0 {
+        Box::new(ok(keys
+            .into_iter()
+            .map(|v| {
+                if v % 2 == 0 {
                     Ok(v * 10)
                 } else {
                     Err(ValueError::NotEven)
-                })
-                .collect())
-            )
+                }
+            }).collect()))
     }
 }
 
@@ -91,8 +92,9 @@ impl BatchFn<i32, ()> for BadBatcher {
 
 pub struct MyCache<K, V>(HashMap<K, V>);
 impl<K, V> MyCache<K, V>
-    where K: Ord + Hash,
-          V: Clone
+where
+    K: Ord + Hash,
+    V: Clone,
 {
     pub fn new() -> MyCache<K, V> {
         MyCache(HashMap::new())
@@ -100,8 +102,9 @@ impl<K, V> MyCache<K, V>
 }
 
 impl<K, V> cached::Cache<K, V> for MyCache<K, V>
-    where K: Ord + Hash,
-          V: Clone
+where
+    K: Ord + Hash,
+    V: Clone,
 {
     fn contains_key(&self, key: &K) -> bool {
         HashMap::contains_key(&self.0, key)

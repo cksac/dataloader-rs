@@ -1,16 +1,15 @@
-use {BatchFn, LoadError};
 use cached;
+use {BatchFn, LoadError};
 
-use std::mem;
-use std::thread;
-use std::sync::Arc;
 use std::collections::BTreeMap;
+use std::mem;
+use std::sync::Arc;
+use std::thread;
 
-use futures::{Stream, Future, Poll, Async};
-use futures::sync::{mpsc, oneshot};
 use futures::future::{join_all, JoinAll};
+use futures::sync::{mpsc, oneshot};
+use futures::{Async, Future, Poll, Stream};
 use tokio_core::reactor::Core;
-
 
 #[derive(Clone)]
 pub struct Loader<K, V, E> {
@@ -20,10 +19,7 @@ pub struct Loader<K, V, E> {
 impl<K, V, E> Loader<K, V, E> {
     pub fn load(&self, key: K) -> LoadFuture<V, E> {
         let (tx, rx) = oneshot::channel();
-        let msg = Message::LoadOne {
-            key,
-            reply: tx,
-        };
+        let msg = Message::LoadOne { key, reply: tx };
         let _ = self.tx.unbounded_send(msg);
         LoadFuture { rx }
     }
@@ -33,30 +29,34 @@ impl<K, V, E> Loader<K, V, E> {
     }
 
     pub fn cached(self) -> cached::Loader<K, V, E, BTreeMap<K, cached::LoadFuture<V, E>>>
-        where K: Clone + Ord,
-              V: Clone,
-              E: Clone
+    where
+        K: Clone + Ord,
+        V: Clone,
+        E: Clone,
     {
         cached::Loader::new(self)
     }
 
     pub fn with_cache<C>(self, cache: C) -> cached::Loader<K, V, E, C>
-        where K: Clone + Ord,
-              V: Clone,
-              E: Clone,
-              C: cached::Cache<K, cached::LoadFuture<V, E>>
+    where
+        K: Clone + Ord,
+        V: Clone,
+        E: Clone,
+        C: cached::Cache<K, cached::LoadFuture<V, E>>,
     {
         cached::Loader::with_cache(self, cache)
     }
 }
 
 impl<K, V, E> Loader<K, V, E>
-    where K: 'static + Send,
-          V: 'static + Send,
-          E: 'static + Clone + Send
+where
+    K: 'static + Send,
+    V: 'static + Send,
+    E: 'static + Clone + Send,
 {
     pub fn new<F>(batch_fn: F) -> Loader<K, V, E>
-        where F: 'static + Send + BatchFn<K, V, Error = E>
+    where
+        F: 'static + Send + BatchFn<K, V, Error = E>,
     {
         assert!(batch_fn.max_batch_size() > 0);
 
@@ -78,12 +78,14 @@ impl<K, V, E> Loader<K, V, E>
 
             let load_fn = batch_fn.clone();
             let loader = batched.for_each(move |requests: Vec<LoadRequest<K, V, E>>| {
-                let (keys, replys) = requests.into_iter()
-                    .fold((Vec::new(), Vec::new()), |mut soa, i| {
-                        soa.0.push(i.0);
-                        soa.1.push(i.1);
-                        soa
-                    });
+                let (keys, replys) =
+                    requests
+                        .into_iter()
+                        .fold((Vec::new(), Vec::new()), |mut soa, i| {
+                            soa.0.push(i.0);
+                            soa.1.push(i.1);
+                            soa
+                        });
                 let batch_job = load_fn.load(&keys).then(move |x| {
                     match x {
                         Ok(values) => {
@@ -93,11 +95,11 @@ impl<K, V, E> Loader<K, V, E>
                                         key_count: keys.len(),
                                         value_count: values.len(),
                                     };
-                                   let _ =  r.send(Err(err.clone()));
+                                    let _ = r.send(Err(err.clone()));
                                 }
                             } else {
                                 for r in replys.into_iter().zip(values) {
-                                   let _ =  r.0.send(Ok(r.1));
+                                    let _ = r.0.send(Ok(r.1));
                                 }
                             }
                         }
@@ -173,18 +175,16 @@ impl<K, V, E> Stream for Batched<K, V, E> {
                         Ok(Some(batch).into())
                     }
                 }
-                Ok(Async::Ready(Some(msg))) => {
-                    match msg {
-                        Message::LoadOne { key, reply } => {
-                            self.items.push((key, reply));
-                            if self.items.len() >= self.max_batch_size {
-                                let buf = Vec::with_capacity(self.max_batch_size);
-                                let batch = mem::replace(&mut self.items, buf);
-                                return Ok(Some(batch).into());
-                            }
+                Ok(Async::Ready(Some(msg))) => match msg {
+                    Message::LoadOne { key, reply } => {
+                        self.items.push((key, reply));
+                        if self.items.len() >= self.max_batch_size {
+                            let buf = Vec::with_capacity(self.max_batch_size);
+                            let batch = mem::replace(&mut self.items, buf);
+                            return Ok(Some(batch).into());
                         }
                     }
-                }
+                },
                 Ok(Async::Ready(None)) => {
                     return if self.items.is_empty() {
                         Ok(Async::Ready(None))
