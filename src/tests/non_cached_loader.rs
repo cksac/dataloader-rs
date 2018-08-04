@@ -1,5 +1,5 @@
 use tests::*;
-use {Loader, LoadError};
+use {LoadError, Loader};
 
 use std::thread;
 use std::time::Duration;
@@ -36,8 +36,12 @@ fn smoke() {
         assert_eq!((10, 20), v1.join(v2).wait().unwrap());
     }
     {
-        let v1 = loader_ref.load(3).map(|v| loader_ref.load(v).wait().unwrap());
-        let v2 = loader_ref.load(4).map(|v| loader_ref.load(v).wait().unwrap());
+        let v1 = loader_ref
+            .load(3)
+            .map(|v| loader_ref.load(v).wait().unwrap());
+        let v2 = loader_ref
+            .load(4)
+            .map(|v| loader_ref.load(v).wait().unwrap());
         assert_eq!((300, 400), v1.join(v2).wait().unwrap());
     }
 }
@@ -75,8 +79,12 @@ fn nested_load() {
 #[test]
 fn nested_load_many() {
     let loader = Loader::new(Batcher::new(2));
-    let v1 = loader.load(3).map(|v| loader.load_many(vec![v, v + 1, v + 2]).wait().unwrap());
-    let v2 = loader.load(4).map(|v| loader.load_many(vec![v, v + 1, v + 2]).wait().unwrap());
+    let v1 = loader
+        .load(3)
+        .map(|v| loader.load_many(vec![v, v + 1, v + 2]).wait().unwrap());
+    let v2 = loader
+        .load(4)
+        .map(|v| loader.load_many(vec![v, v + 1, v + 2]).wait().unwrap());
     let expected = (vec![300, 310, 320], vec![400, 410, 420]);
     assert_eq!(expected, v1.join(v2).wait().unwrap());
 }
@@ -145,8 +153,12 @@ fn pass_to_thread() {
 fn test_run_by_core() {
     let mut core = Core::new().unwrap();
     let loader = Loader::new(Batcher::new(10));
-    let v1 = loader.load(3).and_then(|v| loader.load_many(vec![v, v + 1, v + 2]));
-    let v2 = loader.load(4).and_then(|v| loader.load_many(vec![v, v + 1, v + 2]));
+    let v1 = loader
+        .load(3)
+        .and_then(|v| loader.load_many(vec![v, v + 1, v + 2]));
+    let v2 = loader
+        .load(4)
+        .and_then(|v| loader.load_many(vec![v, v + 1, v + 2]));
     let all = v1.join(v2);
     let output = core.run(all).unwrap();
     let expected = (vec![300, 310, 320], vec![400, 410, 420]);
@@ -158,14 +170,18 @@ fn test_values_length() {
     let loader = Loader::<i32, (), ()>::new(BadBatcher);
     let v1 = loader.load(1);
     let v2 = loader.load(2);
-    assert_eq!(LoadError::UnequalKeyValueSize {
-                   key_count: 2,
-                   value_count: 0,
-               },
-               v1.wait().err().unwrap());
-    assert_eq!(LoadError::UnequalKeyValueSize {
-                   key_count: 2,
-                   value_count: 0,
-               },
-               v2.wait().err().unwrap());
+    assert_eq!(
+        LoadError::UnequalKeyValueSize {
+            key_count: 2,
+            value_count: 0,
+        },
+        v1.wait().err().unwrap()
+    );
+    assert_eq!(
+        LoadError::UnequalKeyValueSize {
+            key_count: 2,
+            value_count: 0,
+        },
+        v2.wait().err().unwrap()
+    );
 }
