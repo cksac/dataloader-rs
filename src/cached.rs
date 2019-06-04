@@ -1,11 +1,12 @@
-use non_cached;
-use LoadError;
+use std::{
+    collections::BTreeMap,
+    pin::Pin,
+    sync::{Arc, Mutex},
+};
 
-use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
+use futures::{future, ready, task::Context, Future, FutureExt as _, Poll};
 
-use futures::future::{join_all, JoinAll, Shared};
-use futures::{Async, Future, Poll};
+use super::{non_cached, LoadError};
 
 #[derive(Clone)]
 pub struct Loader<K, V, E, C>
@@ -37,8 +38,11 @@ where
         }
     }
 
-    pub fn load_many(&self, keys: Vec<K>) -> JoinAll<Vec<LoadFuture<V, E>>> {
-        join_all(keys.into_iter().map(|v| self.load(v)).collect())
+    pub fn load_many(&self, keys: Vec<K>) -> future::TryJoinAll<LoadFuture<V, E>>
+    where
+        V: Unpin,
+    {
+        future::try_join_all(keys.into_iter().map(|v| self.load(v)))
     }
 
     pub fn remove(&self, key: &K) -> Option<LoadFuture<V, E>> {
@@ -65,27 +69,22 @@ where
     V: Clone,
     E: Clone,
 {
-    Load(Shared<non_cached::LoadFuture<V, E>>),
+    Load(future::Shared<non_cached::LoadFuture<V, E>>),
     Prime(V),
 }
 
 impl<V, E> Future for LoadFuture<V, E>
 where
-    V: Clone,
+    V: Clone + Unpin,
     E: Clone,
 {
-    type Item = V;
-    type Error = LoadError<E>;
+    type Output = Result<V, LoadError<E>>;
 
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        match *self {
-            LoadFuture::Load(ref mut f) => match f.poll() {
-                Ok(Async::NotReady) => Ok(Async::NotReady),
-                Ok(Async::Ready(shared)) => Ok(Async::Ready((*shared).clone())),
-                Err(e) => Err((*e).clone()),
-            },
-            LoadFuture::Prime(ref v) => Ok(Async::Ready(v.clone())),
-        }
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        Poll::Ready(match *self {
+            LoadFuture::Load(ref mut f) => ready!(f.poll_unpin(cx)).clone(),
+            LoadFuture::Prime(ref v) => Ok(v.clone()),
+        })
     }
 }
 
