@@ -13,7 +13,7 @@ pub struct Loader<K, V, E, C>
 where
     V: Clone,
     E: Clone,
-    C: Cache<K, LoadFuture<V, E>>,
+    C: Cache<K, Result<V, LoadError<E>>>,
 {
     loader: non_cached::Loader<K, V, E>,
     cache: Arc<Mutex<C>>,
@@ -21,31 +21,37 @@ where
 
 impl<K, V, E, C> Loader<K, V, E, C>
 where
-    K: Clone + Ord,
+    K: Clone,
     V: Clone,
     E: Clone,
-    C: Cache<K, LoadFuture<V, E>>,
+    C: Cache<K, Result<V, LoadError<E>>>,
 {
-    pub fn load(&self, key: K) -> LoadFuture<V, E> {
-        let mut cache = self.cache.lock().unwrap();
-        if let Some(v) = cache.get(&key) {
-            v
+    pub fn load(&self, key: K) -> impl Future<Output = Result<V, LoadError<E>>>
+    where
+        V: Unpin,
+    {
+        let mut cache = self.cache.clone();
+        if let Some(res) = self.cache.lock().unwrap().get(&key) {
+            future::ready(res).left_future()
         } else {
-            let shared = self.loader.load(key.clone()).shared();
-            let f = LoadFuture::Load(shared);
-            cache.insert(key, f.clone());
-            f
+            self.loader
+                .load(key.clone())
+                .map(move |res| {
+                    cache.lock().unwrap().insert(key, res.clone());
+                    res
+                })
+                .right_future()
         }
     }
 
-    pub fn load_many(&self, keys: Vec<K>) -> future::TryJoinAll<LoadFuture<V, E>>
+    pub fn load_many(&self, keys: Vec<K>) -> impl Future<Output = Result<Vec<V>, LoadError<E>>>
     where
         V: Unpin,
     {
         future::try_join_all(keys.into_iter().map(|v| self.load(v)))
     }
 
-    pub fn remove(&self, key: &K) -> Option<LoadFuture<V, E>> {
+    pub fn remove(&self, key: &K) -> Option<Result<V, LoadError<E>>> {
         let mut cache = self.cache.lock().unwrap();
         cache.remove(key)
     }
@@ -58,7 +64,7 @@ where
     pub fn prime(&self, key: K, val: V) {
         let mut cache = self.cache.lock().unwrap();
         if !cache.contains_key(&key) {
-            cache.insert(key, LoadFuture::Prime(val));
+            cache.insert(key, Ok(val));
         }
     }
 }
@@ -93,7 +99,7 @@ where
     K: Clone + Ord,
     V: Clone,
     E: Clone,
-    C: Cache<K, LoadFuture<V, E>>,
+    C: Cache<K, Result<V, LoadError<E>>>,
 {
     pub fn with_cache(loader: non_cached::Loader<K, V, E>, cache: C) -> Self {
         Loader {
@@ -103,7 +109,7 @@ where
     }
 }
 
-impl<K, V, E> Loader<K, V, E, BTreeMap<K, LoadFuture<V, E>>>
+impl<K, V, E> Loader<K, V, E, BTreeMap<K, Result<V, LoadError<E>>>>
 where
     K: Clone + Ord,
     V: Clone,

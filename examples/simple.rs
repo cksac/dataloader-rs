@@ -33,6 +33,7 @@ fn main() {
         assert_eq!(expected, output);
     }
 
+
     let ld = loader.cached();
     println!("\n -- Using Cached Loader --");
     {
