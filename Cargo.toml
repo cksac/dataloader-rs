@@ -6,7 +6,7 @@ authors = ["cksac <cs.cksac@gmail.com>"]
 description = "Rust implementation of Facebook's DataLoader using futures and tokio."
 keywords = ["batcher", "dataloader", "cache"]
 categories = ["asynchronous", "caching"]
-license = "MIT"
+license = "MIT/Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/cksac/dataloader-rs"
 homepage = "https://github.com/cksac/dataloader-rs"
@@ -17,7 +17,8 @@ travis-ci = { repository = "/cksac/dataloader-rs" }
 
 [dependencies]
 tokio = "0.1"
+
 [dependencies.futures]
-    version = "0.3.0-alpha.16"
-    package = "futures-preview"
-    features = ["compat"]
+version = "0.3.0-alpha.16"
+package = "futures-preview"
+features = ["compat"]
