@@ -1,15 +1,14 @@
-use cached;
-use {BatchFn, LoadError};
+use std::{collections::BTreeMap, mem, pin::Pin, rc::Rc, sync::Arc, thread};
 
-use std::collections::BTreeMap;
-use std::mem;
-use std::sync::Arc;
-use std::thread;
+use futures::{
+    channel::{mpsc, oneshot},
+    future, ready,
+    task::Context,
+    Future, FutureExt as _, Poll, Stream, StreamExt as _, TryFutureExt as _,
+};
+use tokio::runtime::current_thread;
 
-use futures::future::{join_all, JoinAll};
-use futures::sync::{mpsc, oneshot};
-use futures::{Async, Future, Poll, Stream};
-use tokio_core::reactor::Core;
+use super::{cached, BatchFn, LoadError};
 
 #[derive(Clone)]
 pub struct Loader<K, V, E> {
@@ -24,8 +23,8 @@ impl<K, V, E> Loader<K, V, E> {
         LoadFuture { rx }
     }
 
-    pub fn load_many(&self, keys: Vec<K>) -> JoinAll<Vec<LoadFuture<V, E>>> {
-        join_all(keys.into_iter().map(|v| self.load(v)).collect())
+    pub fn load_many(&self, keys: Vec<K>) -> future::TryJoinAll<LoadFuture<V, E>> {
+        future::try_join_all(keys.into_iter().map(|v| self.load(v)))
     }
 
     pub fn cached(self) -> cached::Loader<K, V, E, BTreeMap<K, cached::LoadFuture<V, E>>>
@@ -50,7 +49,7 @@ impl<K, V, E> Loader<K, V, E> {
 
 impl<K, V, E> Loader<K, V, E>
 where
-    K: 'static + Send,
+    K: 'static + Send + Unpin,
     V: 'static + Send,
     E: 'static + Clone + Send,
 {
@@ -61,13 +60,12 @@ where
         assert!(batch_fn.max_batch_size() > 0);
 
         let (tx, rx) = mpsc::unbounded();
-        let inner_handle = Arc::new(tx);
-        let loader = Loader { tx: inner_handle };
+        let loader = Loader { tx: Arc::new(tx) };
 
         thread::spawn(move || {
-            let batch_fn = Arc::new(batch_fn);
-            let mut core = Core::new().unwrap();
-            let handle = core.handle();
+            let batch_fn = Rc::new(batch_fn);
+            let mut rt = current_thread::Runtime::new().unwrap();
+            //let handle = rt.handle();
 
             let batched = Batched {
                 rx,
@@ -76,49 +74,36 @@ where
                 channel_closed: false,
             };
 
-            let load_fn = batch_fn.clone();
-            let loader = batched.for_each(move |requests: Vec<LoadRequest<K, V, E>>| {
-                let (keys, replys) =
-                    requests
-                        .into_iter()
-                        .fold((Vec::new(), Vec::new()), |mut soa, i| {
-                            soa.0.push(i.0);
-                            soa.1.push(i.1);
-                            soa
-                        });
-                let batch_job = load_fn.load(&keys).then(move |x| {
-                    match x {
-                        Ok(values) => {
-                            if keys.len() != values.len() {
-                                for r in replys {
-                                    let err = LoadError::UnequalKeyValueSize {
-                                        key_count: keys.len(),
-                                        value_count: values.len(),
-                                    };
-                                    let _ = r.send(Err(err.clone()));
-                                }
-                            } else {
-                                for r in replys.into_iter().zip(values) {
-                                    let _ = r.0.send(Ok(r.1));
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            let err = LoadError::BatchFn(e);
+            //let load_fn = batch_fn.clone();
+            let loader = batched.for_each(move |requests| {
+                let (keys, replys): (Vec<_>, Vec<_>) = requests.into_iter().unzip();
+                batch_fn.load(&keys).map(move |x| match x {
+                    Ok(values) => {
+                        if keys.len() != values.len() {
+                            let err = LoadError::UnequalKeyValueSize {
+                                key_count: keys.len(),
+                                value_count: values.len(),
+                            };
                             for r in replys {
                                 let _ = r.send(Err(err.clone()));
                             }
+                        } else {
+                            for r in replys.into_iter().zip(values) {
+                                let _ = r.0.send(Ok(r.1));
+                            }
                         }
-                    };
-                    Ok(())
-                });
-                handle.spawn(batch_job);
-                Ok(())
+                    }
+                    Err(e) => {
+                        let err = LoadError::BatchFn(e);
+                        for r in replys {
+                            let _ = r.send(Err(err.clone()));
+                        }
+                    }
+                })
             });
-            let _ = core.run(loader);
 
             // Run until all batch jobs completed
-            core.turn(None);
+            let _ = rt.spawn(loader.unit_error().boxed_local().compat()).run();
         });
 
         loader
@@ -130,16 +115,13 @@ pub struct LoadFuture<V, E> {
 }
 
 impl<V, E> Future for LoadFuture<V, E> {
-    type Item = V;
-    type Error = LoadError<E>;
+    type Output = Result<V, LoadError<E>>;
 
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        match self.rx.poll() {
-            Ok(Async::NotReady) => Ok(Async::NotReady),
-            Ok(Async::Ready(Ok(v))) => Ok(Async::Ready(v)),
-            Ok(Async::Ready(Err(e))) => Err(e),
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        Poll::Ready(match ready!(self.rx.poll_unpin(cx)) {
+            Ok(r) => r,
             Err(_) => Err(LoadError::SenderDropped),
-        }
+        })
     }
 }
 
@@ -157,49 +139,38 @@ struct Batched<K, V, E> {
     channel_closed: bool,
 }
 
-impl<K, V, E> Stream for Batched<K, V, E> {
+impl<K: Unpin, V, E> Stream for Batched<K, V, E> {
     type Item = Vec<LoadRequest<K, V, E>>;
-    type Error = LoadError<E>;
 
-    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         if self.channel_closed {
-            return Ok(Async::Ready(None));
+            return Poll::Ready(None);
         }
         loop {
-            match self.rx.poll() {
-                Ok(Async::NotReady) => {
+            match self.rx.poll_next_unpin(cx) {
+                Poll::Pending => {
                     return if self.items.is_empty() {
-                        Ok(Async::NotReady)
+                        Poll::Pending
                     } else {
                         let batch = mem::replace(&mut self.items, Vec::new());
-                        Ok(Some(batch).into())
+                        Poll::Ready(Some(batch))
                     }
                 }
-                Ok(Async::Ready(Some(msg))) => match msg {
-                    Message::LoadOne { key, reply } => {
-                        self.items.push((key, reply));
-                        if self.items.len() >= self.max_batch_size {
-                            let buf = Vec::with_capacity(self.max_batch_size);
-                            let batch = mem::replace(&mut self.items, buf);
-                            return Ok(Some(batch).into());
-                        }
-                    }
-                },
-                Ok(Async::Ready(None)) => {
+                Poll::Ready(None) => {
+                    self.channel_closed = true;
                     return if self.items.is_empty() {
-                        Ok(Async::Ready(None))
+                        Poll::Ready(None)
                     } else {
                         let batch = mem::replace(&mut self.items, Vec::new());
-                        Ok(Some(batch).into())
-                    }
+                        Poll::Ready(Some(batch))
+                    };
                 }
-                Err(_) => {
-                    return if self.items.is_empty() {
-                        Ok(Async::Ready(None))
-                    } else {
-                        self.channel_closed = true;
-                        let batch = mem::replace(&mut self.items, Vec::new());
-                        Ok(Some(batch).into())
+                Poll::Ready(Some(Message::LoadOne { key, reply })) => {
+                    self.items.push((key, reply));
+                    if self.items.len() >= self.max_batch_size {
+                        let buf = Vec::with_capacity(self.max_batch_size);
+                        let batch = mem::replace(&mut self.items, buf);
+                        return Poll::Ready(Some(batch));
                     }
                 }
             }

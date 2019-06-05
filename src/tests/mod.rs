@@ -1,11 +1,12 @@
-use cached;
-use {BatchFn, BatchFuture};
+use std::{
+    collections::HashMap,
+    hash::Hash,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
-use std::collections::HashMap;
-use std::hash::Hash;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use futures::{future, FutureExt as _};
 
-use futures::future::{err, ok};
+use super::*;
 
 mod cached_loader;
 mod non_cached_loader;
@@ -26,9 +27,12 @@ impl Batcher {
 
 impl BatchFn<i32, i32> for Batcher {
     type Error = ();
+
     fn load(&self, keys: &[i32]) -> BatchFuture<i32, Self::Error> {
         self.invoke_cnt.fetch_add(1, Ordering::SeqCst);
-        Box::new(ok(keys.into_iter().map(|v| v * 10).collect()))
+        future::ready(keys.into_iter().map(|v| v * 10).collect())
+            .unit_error()
+            .boxed()
     }
 
     fn max_batch_size(&self) -> usize {
@@ -39,9 +43,12 @@ impl BatchFn<i32, i32> for Batcher {
 // Result with batch call seq
 impl BatchFn<i32, (usize, i32)> for Batcher {
     type Error = ();
+
     fn load(&self, keys: &[i32]) -> BatchFuture<(usize, i32), Self::Error> {
         let seq = self.invoke_cnt.fetch_add(1, Ordering::SeqCst);
-        Box::new(ok(keys.into_iter().map(|v| (seq + 1, v * 10)).collect()))
+        future::ready(keys.into_iter().map(|v| (seq + 1, v * 10)).collect())
+            .unit_error()
+            .boxed()
     }
 
     fn max_batch_size(&self) -> usize {
@@ -55,10 +62,12 @@ pub enum MyError {
 }
 
 pub struct BadBatcher;
+
 impl BatchFn<i32, i32> for BadBatcher {
     type Error = MyError;
+
     fn load(&self, _keys: &[i32]) -> BatchFuture<i32, Self::Error> {
-        Box::new(err(MyError::Unknown))
+        future::ready(Err(MyError::Unknown)).boxed()
     }
 }
 
@@ -69,8 +78,9 @@ pub enum ValueError {
 
 impl BatchFn<i32, Result<i32, ValueError>> for BadBatcher {
     type Error = MyError;
+
     fn load(&self, keys: &[i32]) -> BatchFuture<Result<i32, ValueError>, Self::Error> {
-        Box::new(ok(keys
+        future::ready(Ok(keys
             .into_iter()
             .map(|v| {
                 if v % 2 == 0 {
@@ -78,19 +88,23 @@ impl BatchFn<i32, Result<i32, ValueError>> for BadBatcher {
                 } else {
                     Err(ValueError::NotEven)
                 }
-            }).collect()))
+            })
+            .collect()))
+        .boxed()
     }
 }
 
 impl BatchFn<i32, ()> for BadBatcher {
     type Error = ();
+
     fn load(&self, _keys: &[i32]) -> BatchFuture<(), Self::Error> {
         //always return less values compared to request keys
-        Box::new(ok(vec![]))
+        future::ready(Ok(vec![])).boxed()
     }
 }
 
 pub struct MyCache<K, V>(HashMap<K, V>);
+
 impl<K, V> MyCache<K, V>
 where
     K: Ord + Hash,
