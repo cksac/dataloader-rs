@@ -1,25 +1,37 @@
 use std::{
     collections::BTreeMap,
-    pin::Pin,
     sync::{Arc, Mutex},
 };
 
-use futures::{future, ready, task::Context, Future, FutureExt as _, Poll};
+use futures::{future, Future, FutureExt as _};
 
-use super::{non_cached, LoadError};
+use super::{non_cached, BatchFn, LoadError};
 
-#[derive(Clone)]
-pub struct Loader<K, V, E, C>
+pub struct Loader<K, V, E, F, C>
 where
     V: Clone,
     E: Clone,
     C: Cache<K, Result<V, LoadError<E>>>,
 {
-    loader: non_cached::Loader<K, V, E>,
+    loader: non_cached::Loader<K, V, E, F>,
     cache: Arc<Mutex<C>>,
 }
 
-impl<K, V, E, C> Loader<K, V, E, C>
+impl<K, V, E, F, C> Clone for Loader<K, V, E, F, C>
+where
+    V: Clone,
+    E: Clone,
+    C: Cache<K, Result<V, LoadError<E>>>,
+{
+    fn clone(&self) -> Self {
+        Self {
+            loader: self.loader.clone(),
+            cache: self.cache.clone(),
+        }
+    }
+}
+
+impl<K, V, E, F, C> Loader<K, V, E, F, C>
 where
     K: Clone,
     V: Clone,
@@ -29,8 +41,9 @@ where
     pub fn load(&self, key: K) -> impl Future<Output = Result<V, LoadError<E>>>
     where
         V: Unpin,
+        F: BatchFn<K, V, Error = E>,
     {
-        let mut cache = self.cache.clone();
+        let cache = self.cache.clone();
         if let Some(res) = self.cache.lock().unwrap().get(&key) {
             future::ready(res).left_future()
         } else {
@@ -47,6 +60,7 @@ where
     pub fn load_many(&self, keys: Vec<K>) -> impl Future<Output = Result<Vec<V>, LoadError<E>>>
     where
         V: Unpin,
+        F: BatchFn<K, V, Error = E>,
     {
         future::try_join_all(keys.into_iter().map(|v| self.load(v)))
     }
@@ -69,39 +83,14 @@ where
     }
 }
 
-#[derive(Clone)]
-pub enum LoadFuture<V, E>
-where
-    V: Clone,
-    E: Clone,
-{
-    Load(future::Shared<non_cached::LoadFuture<V, E>>),
-    Prime(V),
-}
-
-impl<V, E> Future for LoadFuture<V, E>
-where
-    V: Clone + Unpin,
-    E: Clone,
-{
-    type Output = Result<V, LoadError<E>>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        Poll::Ready(match *self {
-            LoadFuture::Load(ref mut f) => ready!(f.poll_unpin(cx)).clone(),
-            LoadFuture::Prime(ref v) => Ok(v.clone()),
-        })
-    }
-}
-
-impl<K, V, E, C> Loader<K, V, E, C>
+impl<K, V, E, F, C> Loader<K, V, E, F, C>
 where
     K: Clone + Ord,
     V: Clone,
     E: Clone,
     C: Cache<K, Result<V, LoadError<E>>>,
 {
-    pub fn with_cache(loader: non_cached::Loader<K, V, E>, cache: C) -> Self {
+    pub fn with_cache(loader: non_cached::Loader<K, V, E, F>, cache: C) -> Self {
         Loader {
             loader,
             cache: Arc::new(Mutex::new(cache)),
@@ -109,13 +98,13 @@ where
     }
 }
 
-impl<K, V, E> Loader<K, V, E, BTreeMap<K, Result<V, LoadError<E>>>>
+impl<K, V, E, F> Loader<K, V, E, F, BTreeMap<K, Result<V, LoadError<E>>>>
 where
     K: Clone + Ord,
     V: Clone,
     E: Clone,
 {
-    pub fn new(loader: non_cached::Loader<K, V, E>) -> Self {
+    pub fn new(loader: non_cached::Loader<K, V, E, F>) -> Self {
         Loader::with_cache(loader, BTreeMap::new())
     }
 }

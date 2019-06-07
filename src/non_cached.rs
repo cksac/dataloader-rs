@@ -1,138 +1,86 @@
 use std::{
-    cell::RefCell,
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     mem,
     pin::Pin,
     sync::{Arc, Mutex},
 };
 
 use futures::{
-    channel::{mpsc, oneshot},
     future, ready,
     task::{Context, Waker},
-    Future, FutureExt as _, Poll, Stream, StreamExt as _,
+    Future, Poll,
 };
 
 use super::{cached, BatchFn, BatchFuture, LoadError};
 
-//#[derive(Clone)]
-pub struct Loader<K, V, E> {
-    //todos: Arc<Mutex<BTreeMap<K, Option<Result<V, LoadError<E>>>>>>,
-    queue: Arc<Mutex<Vec<Option<(K, Option<Waker>, Option<Result<V, LoadError<E>>>)>>>>,
-    batch_fn: Arc<BatchFn<K, V, Error = E>>,
-    current_load: Arc<Mutex<Option<BatchFuture<V, E>>>>,
-    visited_count: Arc<Mutex<usize>>,
+pub struct Loader<K, V, E, F> {
+    state: Arc<Mutex<State<K, Result<V, LoadError<E>>, BatchFuture<V, E>>>>,
+    batch_fn: Arc<F>,
     max_batch_size: usize,
-    //tx: Arc<mpsc::UnboundedSender<LoadMessage<K, V, E>>>,
 }
 
-impl<K, V, E> Clone for Loader<K, V, E> {
+impl<K, V, E, F> Clone for Loader<K, V, E, F> {
     fn clone(&self) -> Self {
         Self {
-            queue: self.queue.clone(),
+            state: self.state.clone(),
             batch_fn: self.batch_fn.clone(),
-            current_load: self.current_load.clone(),
-            visited_count: self.visited_count.clone(),
             max_batch_size: self.max_batch_size,
         }
     }
 }
 
-impl<K, V, E> Loader<K, V, E> {
-    pub fn load(&self, key: K) -> LoadFuture2<K, V, E>
-    //pub fn load(&self, key: K) -> impl Future<Output = Result<V, LoadError<E>>>
+impl<K, V, E, F> Loader<K, V, E, F> {
+    pub fn new(batch_fn: F) -> Loader<K, V, E, F>
     where
-        K: Clone,
+        E: Clone,
+        F: BatchFn<K, V, Error = E> + 'static,
+    {
+        assert!(batch_fn.max_batch_size() > 0);
+
+        let max_batch_size = batch_fn.max_batch_size();
+        Loader {
+            state: Arc::new(Mutex::new(State {
+                polls: 0,
+                last_index: 0,
+                queue: VecDeque::new(),
+                queued_keys: HashMap::new(),
+                queued_wakers: HashMap::new(),
+                loading: None,
+                loaded: HashMap::new(),
+            })),
+            batch_fn: Arc::new(batch_fn),
+            max_batch_size,
+        }
+    }
+
+    pub fn load(&self, key: K) -> LoadFuture<K, V, E, F>
+    where
         E: Clone,
     {
-        let index: usize;
+        let id: usize;
         {
-            let mut queue = self.queue.lock().unwrap();
-            queue.push(Some((key, None, None)));
-            index = queue.len() - 1;
+            let mut st = self.state.lock().unwrap();
+            id = st.last_index.checked_add(1).unwrap_or(0);
+            st.queue.push_back(id);
+            st.queued_keys.insert(id, key);
+            st.last_index = id;
         }
-
-        /*
-        {
-            let mut todos = self.todos.lock().unwrap();
-
-            todos.insert(dbg!(key.clone()), None);
-            // TODO: check if exists and not None, return immediately
-        }
-        let todos = self.todos.clone();
-        let batch_fn = self.batch_fn.clone();
-        future::lazy(move |_| {
-            let loc_todos = todos.clone();
-            let mut loc_todos = loc_todos.lock().unwrap();
-            if let Some(None) = loc_todos.get(dbg!(&key)) {
-                let keys: Vec<_> = loc_todos
-                    .iter()
-                    .filter_map(|(k, v)| if v.is_some() { None } else { Some(k.clone()) })
-                    .collect();
-                batch_fn
-                    .load(&keys)
-                    .map(move |res| match res {
-                        Ok(vals) => {
-                            if keys.len() != vals.len() {
-                                let err = LoadError::UnequalKeyValueSize {
-                                    key_count: keys.len(),
-                                    value_count: vals.len(),
-                                };
-                                for (_, val) in todos.lock().unwrap().iter_mut() {
-                                    *val = Some(Err(err.clone()))
-                                }
-                            } else {
-                                let mut todos = todos.lock().unwrap();
-                                for (key, val) in keys.into_iter().zip(vals.into_iter()) {
-                                    //dbg!((&key, &val));
-                                    let _ = todos.insert(key, Some(Ok(val)));
-                                }
-                            }
-                            todos
-                        }
-                        Err(err) => {
-                            for (_, val) in todos.lock().unwrap().iter_mut() {
-                                *val = Some(Err(LoadError::BatchFn(err.clone())))
-                            }
-                            todos
-                        }
-                    })
-                    .map(move |todos| todos.lock().unwrap().remove(&key).unwrap().unwrap())
-                    .right_future()
-            } else {
-                future::ready(loc_todos.remove(&key).unwrap().unwrap()).left_future()
-            }
-        })
-        .flatten()
-        */
-        /* TODO
-        if self.items.len() >= self.max_batch_size {
-            let buf = Vec::with_capacity(self.max_batch_size);
-            let batch = mem::replace(&mut self.items, buf);
-            return Poll::Ready(Some(batch));
-        }*/
-
-        //let (tx, rx) = oneshot::channel();
-        //let msg = Message::LoadOne { key, reply: tx };
-        //let _ = self.tx.unbounded_send(msg);
-        //LoadFuture { rx }
-        LoadFuture2 {
-            index,
-            visited: RefCell::new(false),
+        LoadFuture {
+            id,
+            stage: Stage::Enqueued,
             loader: self.clone(),
         }
     }
 
-    //pub fn load_many(&self, keys: Vec<K>) -> future::TryJoinAll<LoadFuture<V, E>> {
-    pub fn load_many(&self, keys: Vec<K>) -> impl Future<Output = Result<Vec<V>, LoadError<E>>>
+    pub fn load_many(&self, keys: Vec<K>) -> future::TryJoinAll<LoadFuture<K, V, E, F>>
     where
-        K: Clone + std::fmt::Debug,
         E: Clone,
+        F: BatchFn<K, V, Error = E>,
     {
         future::try_join_all(keys.into_iter().map(|v| self.load(v)))
     }
 
-    pub fn cached(self) -> cached::Loader<K, V, E, BTreeMap<K, Result<V, LoadError<E>>>>
+    pub fn cached(self) -> cached::Loader<K, V, E, F, BTreeMap<K, Result<V, LoadError<E>>>>
     where
         K: Clone + Ord,
         V: Clone,
@@ -141,7 +89,7 @@ impl<K, V, E> Loader<K, V, E> {
         cached::Loader::new(self)
     }
 
-    pub fn with_cache<C>(self, cache: C) -> cached::Loader<K, V, E, C>
+    pub fn with_cache<C>(self, cache: C) -> cached::Loader<K, V, E, F, C>
     where
         K: Clone + Ord,
         V: Clone,
@@ -152,253 +100,188 @@ impl<K, V, E> Loader<K, V, E> {
     }
 }
 
-impl<K, V, E> Loader<K, V, E>
+pub struct LoadFuture<K, V, E, F> {
+    id: usize,
+    stage: Stage,
+    loader: Loader<K, V, E, F>,
+}
+
+impl<K, V, E, F> Future for LoadFuture<K, V, E, F>
 where
-    K: 'static + Send + Unpin + Clone + Ord,
-    V: 'static + Send,
-    E: 'static + Clone + Send,
-{
-    pub fn new<F>(batch_fn: F) -> Loader<K, V, E>
-    where
-        F: 'static + Send + BatchFn<K, V, Error = E>,
-    {
-        assert!(batch_fn.max_batch_size() > 0);
-
-        //let (tx, rx) = mpsc::unbounded();
-        let max_batch_size = batch_fn.max_batch_size();
-        let loader = Loader {
-            //todos: Arc::new(Mutex::new(BTreeMap::new())),
-            queue: Arc::new(Mutex::new(vec![])),
-            batch_fn: Arc::new(batch_fn),
-            current_load: Arc::new(Mutex::new(None)),
-            visited_count: Arc::new(Mutex::new(0)),
-            max_batch_size,
-            //tx: Arc::new(tx),
-        };
-
-        /*
-        let batch_fn = loader.batch_fn.clone();
-        thread::spawn(move || {
-            //let batch_fn = Rc::new(batch_fn);
-            let mut rt = current_thread::Runtime::new().unwrap();
-            //let handle = rt.handle();
-
-            let batched = Batched {
-                rx,
-                max_batch_size: batch_fn.max_batch_size(),
-                items: Vec::with_capacity(batch_fn.max_batch_size()),
-                channel_closed: false,
-            };
-
-            //let load_fn = batch_fn.clone();
-            let loader = batched.for_each(move |requests| {
-                let (keys, replys): (Vec<_>, Vec<_>) = requests.into_iter().unzip();
-                batch_fn.load(&keys).map(move |x| match x {
-                    Ok(values) => {
-                        if keys.len() != values.len() {
-                            let err = LoadError::UnequalKeyValueSize {
-                                key_count: keys.len(),
-                                value_count: values.len(),
-                            };
-                            for r in replys {
-                                let _ = r.send(Err(err.clone()));
-                            }
-                        } else {
-                            for r in replys.into_iter().zip(values) {
-                                let _ = r.0.send(Ok(r.1));
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        let err = LoadError::BatchFn(e);
-                        for r in replys {
-                            let _ = r.send(Err(err.clone()));
-                        }
-                    }
-                })
-            });
-
-            // Run until all batch jobs completed
-            let _ = rt.spawn(loader.unit_error().boxed_local().compat()).run();
-        });*/
-
-        loader
-    }
-}
-
-pub struct LoadFuture2<K, V, E> {
-    index: usize,
-    visited: RefCell<bool>,
-    loader: Loader<K, V, E>,
-}
-
-impl<K: Clone, V, E: Clone> Future
-    for LoadFuture2<K, V, E>
+    E: Clone,
+    F: BatchFn<K, V, Error = E>,
 {
     type Output = Result<V, LoadError<E>>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        //     1. If visited_count == queue.len() then run batch_function to completion and return resolved result (with removing from queue)
-        //     2. Else increment visited_count, save Waker and return Pending if visited_count != queue.len()
-        //     3. But if visited_count count == queue.len() then wake all futures and return Pending
+        let state = self.loader.state.clone();
+        let mut st = state.lock().unwrap();
 
-        let mut visited_count = self.loader.visited_count.lock().unwrap();
-        let mut queue = self.loader.queue.lock().unwrap();
-
-        if queue[self.index].is_some() && queue[self.index].as_ref().unwrap().2.is_some() {
-            let item = queue[self.index].take().unwrap();
-            //dbg!(&queue);
-            return Poll::Ready(item.2.unwrap());
+        // If value for our key is loaded already, then return it immediately.
+        if st.loaded.contains_key(&self.id) {
+            self.stage = Stage::Finished;
+            return Poll::Ready(st.loaded.remove(&self.id).unwrap());
         }
 
-        //dbg!(self.index, queue[self.index].as_ref().map(|t| &t.0));
+        // If neither our key is enqueued, nor its value is loaded,
+        // then it's loading at the moment.
+        if !st.queued_keys.contains_key(&self.id) {
+            ready!(st.poll_loading(cx));
+            self.stage = Stage::Finished;
+            return Poll::Ready(st.loaded.remove(&self.id).unwrap());
+        }
 
-        if *visited_count == queue.len() {
-            let mut current_load = self.loader.current_load.lock().unwrap();
-
-            // TODO: optimize
-            let (indexes, keys): (Vec<_>, Vec<_>) = queue
-                .iter()
-                .enumerate()
-                .filter_map(|(n, item)| {
-                    if item.is_some() {
-                        return Some((n, item.as_ref().unwrap().0.clone()));
-                    }
-                    None
+        // Here is the stage where all enqueued keys should be loaded, as we are
+        // deferred enough to be sure that no more keys will be enqueued.
+        if st.polls >= self.loader.max_batch_size || st.polls == st.queued_keys.len() {
+            if st.loading.is_none() {
+                let count = self.loader.max_batch_size.min(st.queued_keys.len());
+                st.polls -= count;
+                let mut queued_keys = mem::replace(&mut st.queued_keys, HashMap::new());
+                let (ids, keys): (Vec<_>, Vec<_>) = st
+                    .queue
+                    .drain(..count)
+                    .map(|id| (id, queued_keys.remove(&id).unwrap()))
+                    .unzip();
+                mem::replace(&mut st.queued_keys, queued_keys);
+                st.loading = Some(LoadingBatch {
+                    ids,
+                    dropped: HashSet::new(),
+                    fut: self.loader.batch_fn.load(&keys),
                 })
-                .unzip();
-            //dbg!(&keys);
-
-            // TODO: what if multiple loads requested?
-            if current_load.is_none() {
-                *current_load = Some(self.loader.batch_fn.load(&keys));
             }
 
-            match ready!(Pin::new(current_load.as_mut().unwrap()).poll(cx)) {
-                Ok(vals) => {
-                    //dbg!(&vals);
-                    if keys.len() != vals.len() {
-                        let err = LoadError::UnequalKeyValueSize {
-                            key_count: keys.len(),
-                            value_count: vals.len(),
-                        };
-                        for index in indexes {
-                            if let Some(ref mut item) = queue[index] {
-                                item.2 = Some(Err(err.clone()));
-                            }
-                        }
-                    } else {
-                        for (index, val) in indexes.into_iter().zip(vals.into_iter()) {
-                            if let Some(ref mut item) = queue[index] {
-                                item.2 = Some(Ok(val));
-                            }
-                        }
-                    }
-                }
-                Err(err) => {
-                    //for (i, (index, _)) in pairs.iter().enumerate() {
-                    for index in indexes {
-                        if let Some(ref mut item) = queue[index] {
-                            item.2 = Some(Err(LoadError::BatchFn(err.clone())));
-                        }
-                    }
-                }
+            ready!(st.poll_loading(cx));
+            // Our key can be absent in the batch that was loaded, so we should
+            // wait until it will be loaded in next batches.
+            if st.loaded.contains_key(&self.id) {
+                self.stage = Stage::Finished;
+                return Poll::Ready(st.loaded.remove(&self.id).unwrap());
             }
-            *current_load = None;
-            //dbg!(&queue);
-
-            let item = queue[self.index].take().unwrap();
-            //dbg!(&queue);
-            return Poll::Ready(item.2.unwrap());
         }
 
-        if !*self.visited.borrow() {
-            *visited_count += 1;
-            *self.as_ref().visited.borrow_mut() = true;
-            //dbg!(self.index, &*visited_count);
+        // We track first attempts to poll Futures of enqueued keys to perform
+        // actual loading only after everything queued is polled.
+        // This way we can be sure that actual loading is deferred long enough
+        // to enqueue all possible keys at this stage of Loader execution
+        // before doing actual loading.
+        if let Stage::Enqueued = self.stage {
+            st.polls += 1;
+            self.stage = Stage::Polled;
         }
-        queue[self.index].as_mut().unwrap().1 = Some(cx.waker().clone());
-        if *visited_count == queue.len() {
-            // When last loading future is polled, we reschedule all the loading
-            // futures again to the end of event loop queue.
-            // This is required for better batch loading deferring, as allows
-            // more event loop ticks before doing a batch load, in which new
-            // keys may be added.
-            for (_, ref mut waker, _) in queue.iter_mut().filter_map(|i| i.as_mut()) {
-                if let Some(waker) = waker.take() {
+        st.queued_wakers.insert(self.id, cx.waker().clone());
+
+        // When all possible Futures of enqueued keys have been polled,
+        // we reschedule them again to the end of event loop queue.
+        // This allows to defer actual loading much better, as leaves space
+        // for more event loop ticks to happen before doing actual loading,
+        // where new keys may be enqueued.
+        if st.polls >= self.loader.max_batch_size || st.polls == st.queue.len() {
+            let mut wakers = mem::replace(&mut st.queued_wakers, HashMap::new());
+            for i in st.queue.iter().take(self.loader.max_batch_size) {
+                if let Some(waker) = wakers.remove(&i) {
                     waker.wake();
                 }
             }
-            //dbg!("run wakers");
+            mem::replace(&mut st.queued_wakers, wakers);
         }
         Poll::Pending
     }
 }
 
-pub struct LoadFuture<V, E> {
-    rx: oneshot::Receiver<Result<V, LoadError<E>>>,
-}
+impl<K, V, E, F> Drop for LoadFuture<K, V, E, F> {
+    fn drop(&mut self) {
+        if let Stage::Finished = self.stage {
+            return;
+        }
 
-impl<V, E> Future for LoadFuture<V, E> {
-    type Output = Result<V, LoadError<E>>;
+        let state = self.loader.state.clone();
+        let mut st = state.lock().unwrap();
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        Poll::Ready(match ready!(self.rx.poll_unpin(cx)) {
-            Ok(r) => r,
-            Err(_) => Err(LoadError::SenderDropped),
-        })
+        if st.queued_keys.contains_key(&self.id) {
+            if let Stage::Polled = self.stage {
+                st.polls -= 1;
+            }
+            st.queued_keys.remove(&self.id);
+            st.queued_wakers.remove(&self.id);
+            st.queue.retain(|id| id != &self.id);
+        } else if st.loaded.contains_key(&self.id) {
+            st.loaded.remove(&self.id);
+        } else {
+            let mut drop_loading_batch = false;
+            if let Some(ref mut batch) = st.loading {
+                batch.dropped.insert(self.id);
+                drop_loading_batch = batch.dropped.len() == batch.ids.len();
+            }
+            // If everything in a loading batch has been dropped,
+            // then we can drop the whole batch eagerly.
+            if drop_loading_batch {
+                st.loading = None;
+            }
+        }
     }
 }
 
-type LoadRequest<K, V, E> = (K, oneshot::Sender<Result<V, LoadError<E>>>);
-type LoadMessage<K, V, E> = Message<K, Result<V, LoadError<E>>>;
-
-enum Message<K, V> {
-    LoadOne { key: K, reply: oneshot::Sender<V> },
+enum Stage {
+    Enqueued,
+    Polled,
+    Finished,
 }
 
-struct Batched<K, V, E> {
-    rx: mpsc::UnboundedReceiver<LoadMessage<K, V, E>>,
-    max_batch_size: usize,
-    items: Vec<LoadRequest<K, V, E>>,
-    channel_closed: bool,
+struct State<K, V, F> {
+    polls: usize,
+    last_index: usize,
+    queue: VecDeque<usize>,
+    queued_keys: HashMap<usize, K>,
+    queued_wakers: HashMap<usize, Waker>,
+    loading: Option<LoadingBatch<F>>,
+    loaded: HashMap<usize, V>,
 }
 
-impl<K: Unpin, V, E> Stream for Batched<K, V, E> {
-    type Item = Vec<LoadRequest<K, V, E>>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        if self.channel_closed {
-            return Poll::Ready(None);
-        }
-        loop {
-            match self.rx.poll_next_unpin(cx) {
-                Poll::Pending => {
-                    return if self.items.is_empty() {
-                        Poll::Pending
-                    } else {
-                        let batch = mem::replace(&mut self.items, Vec::new());
-                        Poll::Ready(Some(batch))
+impl<K, V, E, F> State<K, Result<V, LoadError<E>>, F>
+where
+    E: Clone,
+    F: Future<Output = Result<Vec<V>, E>> + Unpin,
+{
+    fn poll_loading(&mut self, cx: &mut Context) -> Poll<()> {
+        let result = ready!(Pin::new(&mut self.loading.as_mut().unwrap().fut).poll(cx));
+        let ids = mem::replace(&mut self.loading.as_mut().unwrap().ids, vec![]);
+        let dropped = mem::replace(&mut self.loading.as_mut().unwrap().dropped, HashSet::new());
+        match result {
+            Ok(vals) => {
+                if vals.len() != ids.len() {
+                    let err = LoadError::UnequalKeyValueSize {
+                        key_count: ids.len(),
+                        value_count: vals.len(),
+                    };
+                    for id in ids {
+                        if !dropped.contains(&id) {
+                            self.loaded.insert(id, Err(err.clone()));
+                        }
+                    }
+                } else {
+                    for (id, v) in ids.into_iter().zip(vals.into_iter()) {
+                        if !dropped.contains(&id) {
+                            self.loaded.insert(id, Ok(v));
+                        }
                     }
                 }
-                Poll::Ready(None) => {
-                    self.channel_closed = true;
-                    return if self.items.is_empty() {
-                        Poll::Ready(None)
-                    } else {
-                        let batch = mem::replace(&mut self.items, Vec::new());
-                        Poll::Ready(Some(batch))
-                    };
-                }
-                Poll::Ready(Some(Message::LoadOne { key, reply })) => {
-                    self.items.push((key, reply));
-                    if self.items.len() >= self.max_batch_size {
-                        let buf = Vec::with_capacity(self.max_batch_size);
-                        let batch = mem::replace(&mut self.items, buf);
-                        return Poll::Ready(Some(batch));
+            }
+            Err(err) => {
+                for id in ids {
+                    if !dropped.contains(&id) {
+                        self.loaded.insert(id, Err(LoadError::BatchFn(err.clone())));
                     }
                 }
             }
         }
+        self.loading = None;
+        Poll::Ready(())
     }
+}
+
+struct LoadingBatch<F> {
+    ids: Vec<usize>,
+    dropped: HashSet<usize>,
+    fut: F,
 }

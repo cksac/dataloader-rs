@@ -16,5 +16,8 @@ documentation = "https://docs.rs/dataloader"
 travis-ci = { repository = "/cksac/dataloader-rs" }
 
 [dependencies]
+futures-preview = "0.3.0-alpha.16"
+
+[dev-dependencies]
 futures-preview = { version = "0.3.0-alpha.16", features = ["compat"]}
 tokio = "0.1"
