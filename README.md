@@ -4,7 +4,7 @@
 [![Crates.io](https://img.shields.io/crates/v/dataloader.svg)](https://crates.io/crates/dataloader)
 [![Coverage Status](https://coveralls.io/repos/github/cksac/dataloader-rs/badge.svg?branch=master)](https://coveralls.io/github/cksac/dataloader-rs?branch=master)
 
-Rust implementation of [Facebook's DataLoader](https://github.com/facebook/dataloader) using `futures` and `tokio`.
+Rust implementation of [Facebook's DataLoader](https://github.com/facebook/dataloader) using [futures](https://docs.rs/futures-preview).
 
 [Documentation](https://docs.rs/dataloader)
 
@@ -15,21 +15,17 @@ Rust implementation of [Facebook's DataLoader](https://github.com/facebook/datal
 
 ## Usage
 
-Add to your Cargo.toml
-
+Add to your `Cargo.toml`:
 ```toml
 [dependencies]
 dataloader = "0.6.0-dev"
 futures-preview = "0.3.0-alpha.16"
-tokio = "0.1"
 ```
 
-Add to your crate
-
+Add to your crate:
 ```rust
 use dataloader::{BatchFn, BatchFuture, Loader};
-use futures::{future, FutureExt as _, TryFutureExt as _};
-use tokio::runtime::current_thread;
+use futures::{executor, future, FutureExt as _, TryFutureExt as _};
 
 struct Batcher;
 
@@ -45,7 +41,7 @@ impl BatchFn<i32, i32> for Batcher {
 }
 
 fn main() {
-    let mut rt = current_thread::Runtime::new().unwrap();
+    let mut rt = executor::ThreadPool::new().unwrap();
 
     let loader = Loader::new(Batcher);
     println!("\n -- Using Loader --");
@@ -56,8 +52,7 @@ fn main() {
         let v2 = loader
             .load(4)
             .and_then(|v| loader.load_many(vec![v, v + 5, v + 10]));
-        let all = future::try_join(v1, v2);
-        let output = rt.block_on(all.boxed_local().compat()).unwrap();
+        let output = rt.run(future::try_join(v1, v2)).unwrap();
         let expected = (vec![300, 350, 400], vec![400, 450, 500]);
         assert_eq!(expected, output);
     }
@@ -71,10 +66,11 @@ fn main() {
         let v2 = ld
             .load(4)
             .and_then(|v| ld.load_many(vec![v, v + 5, v + 10]));
-        let all = future::try_join(v1, v2);
-        let output = rt.block_on(all.boxed_local().compat()).unwrap();
+        let output = rt.run(future::try_join(v1, v2)).unwrap();
         let expected = (vec![300, 350, 400], vec![400, 450, 500]);
         assert_eq!(expected, output);
     }
 }
 ```
+
+For using with [Tokio](https://docs.rs/tokio) checkout [Tokio example](examples/tokio.rs).
