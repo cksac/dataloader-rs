@@ -162,15 +162,12 @@ fn test_run_by_threadpool() {
     let mut rt = executor::ThreadPool::new().unwrap();
 
     let loader = Loader::new(Batcher::new(10));
-    let loader2 = loader.clone();
     let v1 = loader
-        .clone()
         .load(3)
-        .and_then(move |v| loader.load_many(vec![v, v + 1, v + 2]));
-    let v2 = loader2
-        .clone()
+        .and_then(|v| loader.load_many(vec![v, v + 1, v + 2]));
+    let v2 = loader
         .load(4)
-        .and_then(move |v| loader2.load_many(vec![v, v + 1, v + 2]));
+        .and_then(|v| loader.load_many(vec![v, v + 1, v + 2]));
     assert_eq!(
         (vec![300, 310, 320], vec![400, 410, 420]),
         rt.run(future::try_join(v1, v2)).unwrap(),
