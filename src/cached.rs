@@ -43,18 +43,25 @@ where
         V: Unpin,
         F: BatchFn<K, V, Error = E>,
     {
-        let cache = self.cache.clone();
         if let Some(res) = self.cache.lock().unwrap().get(&key) {
-            future::ready(res).left_future()
-        } else {
-            self.loader
+            return future::ready(res).left_future();
+        }
+        let cache = self.cache.clone();
+        let loader = self.loader.clone();
+        future::lazy(move |_| {
+            if let Some(res) = cache.lock().unwrap().get(&key) {
+                return future::ready(res).left_future();
+            }
+            loader
                 .load(key.clone())
                 .map(move |res| {
                     cache.lock().unwrap().insert(key, res.clone());
                     res
                 })
                 .right_future()
-        }
+        })
+        .flatten()
+        .right_future()
     }
 
     pub fn load_many(&self, keys: Vec<K>) -> impl Future<Output = Result<Vec<V>, LoadError<E>>>

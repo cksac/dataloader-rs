@@ -27,9 +27,9 @@ impl<K, V, E, F> Loader<K, V, E, F> {
         E: Clone,
         F: BatchFn<K, V, Error = E> + 'static,
     {
-        assert!(batch_fn.max_batch_size() > 0);
-
         let max_batch_size = batch_fn.max_batch_size();
+        assert!(max_batch_size > 0);
+
         Loader {
             state: Arc::new(Mutex::new(State {
                 autoinc: 0,
