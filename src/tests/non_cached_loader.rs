@@ -1,4 +1,4 @@
-use std::{sync::Arc, thread, time::Duration};
+use std::{sync::Arc, thread};
 
 use futures::{future, TryFutureExt as _};
 use tokio::runtime::current_thread;
@@ -10,9 +10,9 @@ fn assert_kinds() {
     fn _assert_send<T: Send>() {}
     fn _assert_sync<T: Sync>() {}
     fn _assert_clone<T: Clone>() {}
-    _assert_send::<Loader<u32, u32, u32>>();
-    _assert_sync::<Loader<u32, u32, u32>>();
-    _assert_clone::<Loader<u32, u32, u32>>();
+    _assert_send::<Loader<u32, u32, u32, Batcher>>();
+    _assert_sync::<Loader<u32, u32, u32, Batcher>>();
+    _assert_clone::<Loader<u32, u32, u32, Batcher>>();
 }
 
 #[test]
@@ -55,7 +55,6 @@ fn drop_loader() {
         drop(loader);
         future::try_join(v1, v2)
     };
-    thread::sleep(Duration::from_millis(2000));
 
     assert_eq!((10, 20), rt.block_on(all.boxed_local().compat()).unwrap());
 }
@@ -66,7 +65,6 @@ fn dispatch_partial_batch() {
 
     let loader = Loader::new(Batcher::new(10));
     let all = future::try_join(loader.load(1), loader.load(2));
-    thread::sleep(Duration::from_millis(200));
 
     assert_eq!((10, 20), rt.block_on(all.boxed_local().compat()).unwrap());
 }
@@ -104,7 +102,7 @@ fn nested_load_many() {
 fn test_batch_fn_error() {
     let mut rt = current_thread::Runtime::new().unwrap();
 
-    let loader = Loader::<i32, i32, MyError>::new(BadBatcher);
+    let loader = Loader::<i32, i32, MyError, BadBatcher>::new(BadBatcher);
     let v1 = rt.block_on(loader.load(1).boxed_local().compat());
 
     assert_eq!(LoadError::BatchFn(MyError::Unknown), v1.err().unwrap());
@@ -114,7 +112,7 @@ fn test_batch_fn_error() {
 fn test_result_val() {
     let mut rt = current_thread::Runtime::new().unwrap();
 
-    let loader = Loader::<i32, Result<i32, ValueError>, MyError>::new(BadBatcher);
+    let loader = Loader::<i32, Result<i32, ValueError>, MyError, BadBatcher>::new(BadBatcher);
     let v1 = rt.block_on(loader.load_many(vec![1, 2]).boxed_local().compat());
 
     assert_eq!(vec![Err(ValueError::NotEven), Ok(20)], v1.unwrap());
@@ -125,7 +123,7 @@ fn test_batch_call_seq() {
     let mut rt = current_thread::Runtime::new().unwrap();
 
     // batch size = 2, value will be (batch_fn call seq,  v * 10)
-    let loader = Loader::<i32, (usize, i32), ()>::new(Batcher::new(2));
+    let loader = Loader::<i32, (usize, i32), (), Batcher>::new(Batcher::new(2));
     let v1 = loader.load(1);
     let v2 = loader.load(2);
     let v3 = loader.load(3);
@@ -133,17 +131,24 @@ fn test_batch_call_seq() {
     let v5 = loader.load(1);
     let v6 = loader.load(2);
 
-    thread::sleep(Duration::from_millis(500));
-
     //v1 and v2 should be in first batch
-    assert_eq!((1, 10), rt.block_on(v1.boxed_local().compat()).unwrap());
-    assert_eq!((1, 20), rt.block_on(v2.boxed_local().compat()).unwrap());
-    //v3 and v4 should be in sencod batch
-    assert_eq!((2, 30), rt.block_on(v3.boxed_local().compat()).unwrap());
-    assert_eq!((2, 40), rt.block_on(v4.boxed_local().compat()).unwrap());
-    //v5 and v6 should be using cache of first batch
-    assert_eq!((3, 10), rt.block_on(v5.boxed_local().compat()).unwrap());
-    assert_eq!((3, 20), rt.block_on(v6.boxed_local().compat()).unwrap());
+    let b1 = future::try_join(v1, v2);
+    assert_eq!(
+        ((1, 10), (1, 20)),
+        rt.block_on(b1.boxed_local().compat()).unwrap()
+    );
+    //v3 and v4 should be in second batch
+    let b2 = future::try_join(v3, v4);
+    assert_eq!(
+        ((2, 30), (2, 40)),
+        rt.block_on(b2.boxed_local().compat()).unwrap()
+    );
+    //v5 and v6 should be be in third batch
+    let b3 = future::try_join(v5, v6);
+    assert_eq!(
+        ((3, 10), (3, 20)),
+        rt.block_on(b3.boxed_local().compat()).unwrap()
+    );
 }
 
 #[test]
@@ -193,21 +198,25 @@ fn test_run_by_tokio_runtime() {
 fn test_values_length() {
     let mut rt = current_thread::Runtime::new().unwrap();
 
-    let loader = Loader::<i32, (), ()>::new(BadBatcher);
+    let loader = Loader::<i32, (), (), BadBatcher>::new(BadBatcher);
     let v1 = loader.load(1);
     let v2 = loader.load(2);
+
+    let (r1, r2) = rt
+        .block_on(future::join(v1, v2).unit_error().boxed_local().compat())
+        .unwrap();
     assert_eq!(
         LoadError::UnequalKeyValueSize {
             key_count: 2,
             value_count: 0,
         },
-        rt.block_on(v1.boxed_local().compat()).err().unwrap(),
+        r1.unwrap_err(),
     );
     assert_eq!(
         LoadError::UnequalKeyValueSize {
             key_count: 2,
             value_count: 0,
         },
-        rt.block_on(v2.boxed_local().compat()).err().unwrap(),
+        r2.unwrap_err(),
     );
 }
