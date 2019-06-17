@@ -125,9 +125,9 @@ fn test_batch_call_seq() {
 fn pass_to_thread() {
     let loader = Loader::new(Batcher::new(4));
 
-    let l = loader.clone();
+    let l1 = loader.clone();
     let h1 = thread::spawn(move || {
-        let all = future::try_join(l.load(1), l.load(2));
+        let all = future::try_join(l1.load(1), l1.load(2));
         assert_eq!((10, 20), executor::block_on(all).unwrap());
     });
 

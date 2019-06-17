@@ -134,9 +134,9 @@ fn test_batch_call_seq() {
 fn pass_to_thread() {
     let loader = Loader::new(Batcher::new(4)).cached();
 
-    let l = loader.clone();
+    let l1 = loader.clone();
     let h1 = thread::spawn(move || {
-        let all = future::try_join(l.load(1), l.load(2));
+        let all = future::try_join(l1.load(1), l1.load(2));
         assert_eq!((10, 20), executor::block_on(all).unwrap());
     });
 
@@ -236,4 +236,24 @@ fn test_custom_cache() {
         ((2, 10), (2, 20)),
         executor::block_on(future::try_join(v3, v4)).unwrap(),
     );
+}
+
+#[test]
+fn single_load_for_key_concurrently() {
+    // batch size = 2, value will be (batch_fn call seq, v * 10)
+    let loader = Loader::<i32, (usize, i32), (), _>::new(Batcher::new(2)).cached();
+    let all = future::try_join3(loader.load(1), loader.load(1), loader.load(1));
+    let expected = ((1, 10), (1, 10), (1, 10));
+    assert_eq!(expected, executor::block_on(all).unwrap());
+}
+
+#[test]
+fn single_load_for_key_sequentially() {
+    // batch size = 2, value will be (batch_fn call seq, v * 10)
+    let loader = Loader::<i32, (usize, i32), (), _>::new(Batcher::new(2)).cached();
+    let all = loader
+        .load(1)
+        .and_then(|_| loader.load(1))
+        .and_then(|_| loader.load(1));
+    assert_eq!((1, 10), executor::block_on(all).unwrap());
 }
