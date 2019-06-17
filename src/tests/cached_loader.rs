@@ -137,17 +137,17 @@ fn pass_to_thread() {
     let l1 = loader.clone();
     let h1 = thread::spawn(move || {
         let all = future::try_join(l1.load(1), l1.load(2));
-        assert_eq!((10, 20), executor::block_on(all).unwrap());
+        executor::block_on(all).unwrap()
     });
 
     let l2 = loader.clone();
     let h2 = thread::spawn(move || {
         let all = future::try_join(l2.load(1), l2.load(2));
-        assert_eq!((10, 20), executor::block_on(all).unwrap());
+        executor::block_on(all).unwrap()
     });
 
-    let _ = h1.join();
-    let _ = h2.join();
+    assert_eq!((10, 20), h1.join().unwrap());
+    assert_eq!((10, 20), h2.join().unwrap());
 }
 
 #[test]
