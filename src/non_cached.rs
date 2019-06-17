@@ -3,9 +3,11 @@ use std::{
     mem,
     pin::Pin,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
-use futures::{future, ready, task::Context, Future, Poll};
+use futures::{future, ready, task::Context, Future, FutureExt as _, Poll};
+use futures_timer::Delay;
 
 use super::{cached, BatchFn, BatchFuture, LoadError};
 
@@ -13,6 +15,7 @@ pub struct Loader<K, V, E, F> {
     state: Arc<Mutex<State<K, Result<V, LoadError<E>>, F, BatchFuture<V, E>>>>,
 }
 
+// Manual implementation is used to omit applying unnecessary Clone bounds.
 impl<K, V, E, F> Clone for Loader<K, V, E, F> {
     fn clone(&self) -> Self {
         Self {
@@ -35,7 +38,6 @@ impl<K, V, E, F> Loader<K, V, E, F> {
                 autoinc: 0,
                 max_batch_size,
                 load_fn: batch_fn,
-                created_keys: HashMap::new(),
                 queued_keys: HashMap::new(),
                 loading_ids: HashMap::new(),
                 loading_batches: HashMap::new(),
@@ -51,12 +53,13 @@ impl<K, V, E, F> Loader<K, V, E, F> {
         let id = {
             let mut st = self.state.lock().unwrap();
             let id = st.new_unique_id();
-            st.created_keys.insert(id, key);
+            st.queued_keys.insert(id, key);
             id
         };
         LoadFuture {
             id,
-            finished: false,
+            delay: None,
+            stage: Stage::Created,
             state: self.state.clone(),
         }
     }
@@ -69,29 +72,30 @@ impl<K, V, E, F> Loader<K, V, E, F> {
         future::try_join_all(keys.into_iter().map(|v| self.load(v)))
     }
 
-    pub fn cached(self) -> cached::Loader<K, V, E, F, BTreeMap<K, Result<V, LoadError<E>>>>
+    pub fn cached(self) -> cached::Loader<K, V, E, F, BTreeMap<K, cached::Item<K, V, E, F>>>
     where
-        K: Clone + Ord,
-        V: Clone,
+        K: Ord,
         E: Clone,
+        F: BatchFn<K, V, Error = E>,
     {
         cached::Loader::new(self)
     }
 
-    pub fn with_cache<C>(self, cache: C) -> cached::Loader<K, V, E, F, C>
-    where
-        K: Clone + Ord,
-        V: Clone,
-        E: Clone,
-        C: cached::Cache<K, Result<V, LoadError<E>>>,
-    {
+    pub fn with_cache<C>(self, cache: C) -> cached::Loader<K, V, E, F, C> {
         cached::Loader::with_cache(self, cache)
     }
 }
 
+enum Stage {
+    Created,
+    Polled,
+    Finished,
+}
+
 pub struct LoadFuture<K, V, E, F> {
     id: usize,
-    finished: bool,
+    delay: Option<Delay>,
+    stage: Stage,
     state: Arc<Mutex<State<K, Result<V, LoadError<E>>, F, BatchFuture<V, E>>>>,
 }
 
@@ -107,37 +111,43 @@ where
         let mut st = state.lock().unwrap();
 
         if st.loaded_vals.contains_key(&self.id) {
-            self.finished = true;
+            self.stage = Stage::Finished;
             return Poll::Ready(st.loaded_vals.remove(&self.id).unwrap());
         }
 
         if let Some(batch_id) = st.loading_ids.get(&self.id) {
             let batch_id = *batch_id;
             ready!(st.poll_batch(cx, batch_id));
-            self.finished = true;
+            self.stage = Stage::Finished;
             return Poll::Ready(st.loaded_vals.remove(&self.id).unwrap());
         }
 
-        if st.queued_keys.contains_key(&self.id) {
-            // At this point loading is deferred enough to be sure that no more
-            // keys will be enqueued (all were polled at least once).
+        if self.delay.is_some() {
+            let _ = ready!(self.delay.as_mut().unwrap().poll_unpin(cx));
+            self.delay = None;
+        }
+
+        if let Stage::Polled = self.stage {
             let batch_id = st.dispatch_new_batch(self.id);
             ready!(st.poll_batch(cx, batch_id));
-            self.finished = true;
+            self.stage = Stage::Finished;
             return Poll::Ready(st.loaded_vals.remove(&self.id).unwrap());
         }
 
-        // Key is enqueued only if its LoadFuture is polled at least once.
-        // This allows to omit LoadFutures which has been created, but never
-        // scheduled for execution.
-        if let Some(key) = st.created_keys.remove(&self.id) {
-            st.queued_keys.insert(self.id, key);
+        // Skipping first poll for LoadFuture allows to defer a batch loading,
+        // and collect more keys for the batch.
+        if let Stage::Created = self.stage {
+            self.stage = Stage::Polled;
         }
-
-        // Reschedule this LoadFuture to the end of event loop.
+        // Reschedule this LoadFuture execution to the end of event loop.
         // This allows to defer the actual loading much better, as leaves space
         // for more event loop ticks to happen before doing actual loading,
         // where new keys may be enqueued.
+        self.delay = Some(Delay::new(Duration::from_nanos(1)));
+        let _ = ready!(self.delay.as_mut().unwrap().poll_unpin(cx));
+        // If Delay Future is somehow ready instantly (normally, this should not
+        // happen), then defer this LoadFuture execution with Waker, which is
+        // not as good as Delay Future in deferring, but is something at least.
         cx.waker().wake_by_ref();
         Poll::Pending
     }
@@ -145,7 +155,7 @@ where
 
 impl<K, V, E, F> Drop for LoadFuture<K, V, E, F> {
     fn drop(&mut self) {
-        if self.finished {
+        if let Stage::Finished = self.stage {
             return;
         }
         let state = self.state.clone();
@@ -154,7 +164,6 @@ impl<K, V, E, F> Drop for LoadFuture<K, V, E, F> {
             Err(_) => return, // Do not panic if Mutex is poisoned.
         };
 
-        st.created_keys.remove(&self.id);
         st.queued_keys.remove(&self.id);
         st.loaded_vals.remove(&self.id);
         if let Some(batch_id) = st.loading_ids.remove(&self.id) {
@@ -178,7 +187,6 @@ struct State<K, V, F, Fut> {
     autoinc: usize,
     max_batch_size: usize,
     load_fn: F,
-    created_keys: HashMap<usize, K>,
     queued_keys: HashMap<usize, K>,
     loading_ids: HashMap<usize, usize>,
     loading_batches: HashMap<usize, LoadingBatch<Fut>>,

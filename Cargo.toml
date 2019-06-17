@@ -17,6 +17,7 @@ travis-ci = { repository = "/cksac/dataloader-rs" }
 
 [dependencies]
 futures-preview = "0.3.0-alpha.16"
+futures-timer = "0.2"
 
 [dev-dependencies]
 futures-preview = { version = "0.3.0-alpha.16", features = ["compat"]}
