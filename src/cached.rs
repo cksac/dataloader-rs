@@ -1,53 +1,63 @@
 use std::{
     collections::BTreeMap,
-    pin::Pin,
     sync::{Arc, Mutex},
 };
 
-use futures::{future, ready, task::Context, Future, FutureExt as _, Poll};
+use futures::{future, Future, FutureExt as _};
 
-use super::{non_cached, LoadError};
+use super::{
+    non_cached::{self, LoadFuture},
+    BatchFn, LoadError,
+};
 
-#[derive(Clone)]
-pub struct Loader<K, V, E, C>
-where
-    V: Clone,
-    E: Clone,
-    C: Cache<K, LoadFuture<V, E>>,
-{
-    loader: non_cached::Loader<K, V, E>,
+pub struct Loader<K, V, E, F, C> {
+    loader: non_cached::Loader<K, V, E, F>,
     cache: Arc<Mutex<C>>,
 }
 
-impl<K, V, E, C> Loader<K, V, E, C>
-where
-    K: Clone + Ord,
-    V: Clone,
-    E: Clone,
-    C: Cache<K, LoadFuture<V, E>>,
-{
-    pub fn load(&self, key: K) -> LoadFuture<V, E> {
-        let mut cache = self.cache.lock().unwrap();
-        if let Some(v) = cache.get(&key) {
-            v
-        } else {
-            let shared = self.loader.load(key.clone()).shared();
-            let f = LoadFuture::Load(shared);
-            cache.insert(key, f.clone());
-            f
+// Manual implementation is used to omit applying unnecessary Clone bounds.
+impl<K, V, E, F, C> Clone for Loader<K, V, E, F, C> {
+    fn clone(&self) -> Self {
+        Self {
+            loader: self.loader.clone(),
+            cache: self.cache.clone(),
         }
     }
+}
 
-    pub fn load_many(&self, keys: Vec<K>) -> future::TryJoinAll<LoadFuture<V, E>>
+impl<K, V, E, F, C> Loader<K, V, E, F, C>
+where
+    K: Clone,
+    V: Clone,
+    E: Clone,
+    F: BatchFn<K, V, Error = E>,
+    C: Cache<K, Item<K, V, E, F>>,
+{
+    pub fn load(&self, key: K) -> impl Future<Output = Result<V, LoadError<E>>>
     where
         V: Unpin,
+        F: BatchFn<K, V, Error = E>,
+    {
+        let mut cache = self.cache.lock().unwrap();
+        if let Some(item) = cache.get(&key) {
+            return item.into_future().left_future();
+        }
+        let item = CacheItem::Loading(self.loader.load(key.clone()).shared());
+        cache.insert(key, item.clone());
+        item.into_future().right_future()
+    }
+
+    pub fn load_many(&self, keys: Vec<K>) -> impl Future<Output = Result<Vec<V>, LoadError<E>>>
+    where
+        V: Unpin,
+        F: BatchFn<K, V, Error = E>,
     {
         future::try_join_all(keys.into_iter().map(|v| self.load(v)))
     }
 
-    pub fn remove(&self, key: &K) -> Option<LoadFuture<V, E>> {
+    pub fn remove(&self, key: &K) -> Option<impl Future<Output = Result<V, LoadError<E>>>> {
         let mut cache = self.cache.lock().unwrap();
-        cache.remove(key)
+        cache.remove(key).map(|item| item.into_future())
     }
 
     pub fn clear(&self) {
@@ -58,44 +68,13 @@ where
     pub fn prime(&self, key: K, val: V) {
         let mut cache = self.cache.lock().unwrap();
         if !cache.contains_key(&key) {
-            cache.insert(key, LoadFuture::Prime(val));
+            cache.insert(key, CacheItem::Prime(Ok(val)));
         }
     }
 }
 
-#[derive(Clone)]
-pub enum LoadFuture<V, E>
-where
-    V: Clone,
-    E: Clone,
-{
-    Load(future::Shared<non_cached::LoadFuture<V, E>>),
-    Prime(V),
-}
-
-impl<V, E> Future for LoadFuture<V, E>
-where
-    V: Clone + Unpin,
-    E: Clone,
-{
-    type Output = Result<V, LoadError<E>>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        Poll::Ready(match *self {
-            LoadFuture::Load(ref mut f) => ready!(f.poll_unpin(cx)).clone(),
-            LoadFuture::Prime(ref v) => Ok(v.clone()),
-        })
-    }
-}
-
-impl<K, V, E, C> Loader<K, V, E, C>
-where
-    K: Clone + Ord,
-    V: Clone,
-    E: Clone,
-    C: Cache<K, LoadFuture<V, E>>,
-{
-    pub fn with_cache(loader: non_cached::Loader<K, V, E>, cache: C) -> Self {
+impl<K, V, E, F, C> Loader<K, V, E, F, C> {
+    pub fn with_cache(loader: non_cached::Loader<K, V, E, F>, cache: C) -> Self {
         Loader {
             loader,
             cache: Arc::new(Mutex::new(cache)),
@@ -103,14 +82,48 @@ where
     }
 }
 
-impl<K, V, E> Loader<K, V, E, BTreeMap<K, LoadFuture<V, E>>>
+impl<K, V, E, F> Loader<K, V, E, F, BTreeMap<K, Item<K, V, E, F>>>
 where
-    K: Clone + Ord,
-    V: Clone,
+    K: Ord,
     E: Clone,
+    F: BatchFn<K, V, Error = E>,
 {
-    pub fn new(loader: non_cached::Loader<K, V, E>) -> Self {
+    pub fn new(loader: non_cached::Loader<K, V, E, F>) -> Self {
         Loader::with_cache(loader, BTreeMap::new())
+    }
+}
+
+pub type Item<K, V, E, F> = CacheItem<Result<V, LoadError<E>>, LoadFuture<K, V, E, F>>;
+
+pub enum CacheItem<V, F: Future> {
+    Prime(V),
+    Loading(future::Shared<F>),
+}
+
+// Manual implementation is used to omit applying unnecessary Clone bounds.
+impl<V, F> Clone for CacheItem<V, F>
+where
+    V: Clone,
+    F: Future,
+{
+    fn clone(&self) -> Self {
+        match self {
+            CacheItem::Prime(ref v) => CacheItem::Prime(v.clone()),
+            CacheItem::Loading(ref f) => CacheItem::Loading(f.clone()),
+        }
+    }
+}
+
+impl<V, F> CacheItem<V, F>
+where
+    V: Clone,
+    F: Future<Output = V>,
+{
+    pub fn into_future(self) -> impl Future<Output = V> {
+        match self {
+            CacheItem::Prime(v) => future::ready(v).left_future(),
+            CacheItem::Loading(f) => f.right_future(),
+        }
     }
 }
 
