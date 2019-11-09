@@ -143,7 +143,7 @@ fn pass_to_thread() {
 
 #[test]
 fn test_run_by_threadpool() {
-    let mut rt = executor::ThreadPool::new().unwrap();
+    let mut rt = executor::LocalPool::new();
 
     let loader = Loader::new(Batcher::new(10));
     let v1 = loader
@@ -154,7 +154,7 @@ fn test_run_by_threadpool() {
         .and_then(|v| loader.load_many(vec![v, v + 1, v + 2]));
     assert_eq!(
         (vec![300, 310, 320], vec![400, 410, 420]),
-        rt.run(future::try_join(v1, v2)).unwrap(),
+        rt.run_until(future::try_join(v1, v2)).unwrap(),
     );
 }
 

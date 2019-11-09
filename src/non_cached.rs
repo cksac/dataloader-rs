@@ -1,13 +1,14 @@
+use futures::{future, ready, task::Context, FutureExt as _};
+use futures_timer::Delay;
 use std::{
     collections::{BTreeMap, HashMap},
+    future::Future,
     mem,
     pin::Pin,
     sync::{Arc, Mutex},
+    task::Poll,
     time::Duration,
 };
-
-use futures::{future, ready, task::Context, Future, FutureExt as _, Poll};
-use futures_timer::Delay;
 
 use super::{cached, BatchFn, BatchFuture, LoadError};
 

@@ -15,7 +15,7 @@ impl BatchFn<i32, i32> for Batcher {
 }
 
 fn main() {
-    let mut rt = executor::ThreadPool::new().unwrap();
+    let mut rt = executor::LocalPool::new();
 
     let loader = Loader::new(Batcher);
     println!("\n -- Using Loader --");
@@ -26,7 +26,7 @@ fn main() {
         let v2 = loader
             .load(4)
             .and_then(|v| loader.load_many(vec![v, v + 5, v + 10]));
-        let output = rt.run(future::try_join(v1, v2)).unwrap();
+        let output = rt.run_until(future::try_join(v1, v2)).unwrap();
         let expected = (vec![300, 350, 400], vec![400, 450, 500]);
         assert_eq!(expected, output);
     }
@@ -40,7 +40,7 @@ fn main() {
         let v2 = ld
             .load(4)
             .and_then(|v| ld.load_many(vec![v, v + 5, v + 10]));
-        let output = rt.run(future::try_join(v1, v2)).unwrap();
+        let output = rt.run_until(future::try_join(v1, v2)).unwrap();
         let expected = (vec![300, 350, 400], vec![400, 450, 500]);
         assert_eq!(expected, output);
     }
