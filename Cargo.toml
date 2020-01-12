@@ -21,4 +21,4 @@ futures-timer = "2.0.0"
 
 [dev-dependencies]
 futures = { version = "0.3.1", features = ["compat"]}
-tokio = "0.1"
+tokio = "0.2"
