@@ -29,7 +29,7 @@ fn main() {
             .load(4)
             .and_then(move |v| loader2.load_many(vec![v, v + 5, v + 10]));
         let all = future::try_join(v1, v2);
-        let output = rt.block_on(all.boxed().compat()).unwrap();
+        let output = rt.block_on(all).unwrap();
         let expected = (vec![300, 350, 400], vec![400, 450, 500]);
         assert_eq!(expected, output);
     }
@@ -46,7 +46,7 @@ fn main() {
             .load(4)
             .and_then(move |v| ld2.load_many(vec![v, v + 5, v + 10]));
         let all = future::try_join(v1, v2);
-        let output = rt.block_on(all.boxed().compat()).unwrap();
+        let output = rt.block_on(all).unwrap();
         let expected = (vec![300, 350, 400], vec![400, 450, 500]);
         assert_eq!(expected, output);
     }
