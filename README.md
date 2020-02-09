@@ -18,7 +18,7 @@ Rust implementation of [Facebook's DataLoader](https://github.com/facebook/datal
 Add to your `Cargo.toml`:
 ```toml
 [dependencies]
-dataloader = "0.6.0"
+dataloader = "0.7.0"
 futures = "0.3"
 ```
 
