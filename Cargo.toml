@@ -1,6 +1,6 @@
 [package]
 name = "dataloader"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2018"
 authors = ["cksac <cs.cksac@gmail.com>"]
 description = "Rust implementation of Facebook's DataLoader using futures."
@@ -20,5 +20,5 @@ futures = "0.3.1"
 futures-timer = "2.0.0"
 
 [dev-dependencies]
-futures = { version = "0.3.1", features = ["compat"]}
+futures = { version = "0.3.1"}
 tokio = "0.2"
