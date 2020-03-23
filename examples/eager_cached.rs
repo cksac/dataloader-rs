@@ -1,37 +1,3 @@
-# Dataloader
-
-[![Build Status](https://travis-ci.org/cksac/dataloader-rs.svg?branch=master)](https://travis-ci.org/cksac/dataloader-rs)
-[![Crates.io](https://img.shields.io/crates/v/dataloader.svg)](https://crates.io/crates/dataloader)
-[![Coverage Status](https://coveralls.io/repos/github/cksac/dataloader-rs/badge.svg?branch=master)](https://coveralls.io/github/cksac/dataloader-rs?branch=master)
-
-Rust implementation of [Facebook's DataLoader](https://github.com/facebook/dataloader) using [futures](https://docs.rs/futures-preview).
-
-[Documentation](https://docs.rs/dataloader)
-
-## Features
-* eager loader
-    * [x] Batching with caching load requests
-    * [ ] Batching without caching load requests
-* lazy loader
-    * [ ] Batching with caching load requests
-    * [ ] Batching without caching load requests
-
-## Usage
-
-Add to your `Cargo.toml`:
-```toml
-[dependencies]
-dataloader = "0.8"
-futures = { version = "0.3" }
-async-trait = "0.1"
-
-[dependencies.async-std]
-version = "1.0"
-features = ["unstable"]
-```
-
-example:
-```rust
 use async_std::prelude::*;
 use async_std::task;
 use async_trait::async_trait;
@@ -90,15 +56,3 @@ fn main() {
         i += 1;
     }
 }
-```
-
-# LICENSE
-
-This project is licensed under either of
-
- * Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or
-   http://www.apache.org/licenses/LICENSE-2.0)
- * MIT license ([LICENSE-MIT](LICENSE-MIT) or
-   http://opensource.org/licenses/MIT)
-
-at your option.

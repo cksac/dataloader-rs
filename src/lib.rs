@@ -1,32 +1,18 @@
-use futures::future::BoxFuture;
+use async_trait::async_trait;
+use std::collections::HashMap;
 
-pub mod non_cached;
-pub use non_cached::*;
-
-pub mod cached;
+pub mod eager;
 
 #[cfg(test)]
 mod tests;
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum LoadError<E> {
-    SenderDropped,
-    UnequalKeyValueSize {
-        key_count: usize,
-        value_count: usize,
-    },
-    BatchFn(E),
-}
-
-pub type BatchFuture<I, E> = BoxFuture<'static, Result<Vec<I>, E>>;
-
+#[async_trait]
 pub trait BatchFn<K, V> {
     type Error;
 
-    fn load(&self, keys: &[K]) -> BatchFuture<V, Self::Error>;
-
-    #[inline(always)]
     fn max_batch_size(&self) -> usize {
         200
     }
+
+    async fn load(&self, keys: &[K]) -> HashMap<K, Result<V, Self::Error>>;
 }
