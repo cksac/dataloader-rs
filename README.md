@@ -9,12 +9,12 @@ Rust implementation of [Facebook's DataLoader](https://github.com/facebook/datal
 [Documentation](https://docs.rs/dataloader)
 
 ## Features
-* eager loader
-    * [x] Batching with caching load requests
-    * [ ] Batching without caching load requests
-* lazy loader
-    * [ ] Batching with caching load requests
-    * [ ] Batching without caching load requests
+* Eager loader
+    * [x] Batching load requests with caching
+    * [ ] Batching load requests without caching
+* Lazy loader
+    * [ ] Batching load requests with caching
+    * [ ] Batching load requests without caching
 
 ## Usage
 
