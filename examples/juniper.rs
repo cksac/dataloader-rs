@@ -50,8 +50,11 @@ struct Query;
 impl Query {
     async fn persons(_context: &AppContext) -> FieldResult<Vec<Person>> {
         let persons = fake::vec![Person; 10..20];
-        println!("get persons");
         Ok(persons)
+    }
+
+    async fn cult(&self, id: i32, ctx: &AppContext) -> Cult {
+        ctx.cult_loader.load(id).await.expect("get cult")
     }
 }
 
@@ -77,8 +80,7 @@ impl Person {
         self.name.as_str()
     }
 
-    pub async fn cult(&self, ctx: &AppContext) -> FieldResult<Option<Cult>> {
-        println!("load Person[{}].cult[{}]", self.id, self.cult);
+    pub async fn cult(&self, ctx: &AppContext) -> FieldResult<Option<Cult>> {        
         let fut = ctx.cult_loader.load(self.cult);
         Ok(Some(fut.await.expect("get cult")))
     }
@@ -109,7 +111,19 @@ fn main() {
     let ctx = AppContext::new();
     let schema = Schema::new(Query, EmptyMutation::new());
     let vars = Variables::new();
-    let q = "query {
+    let q = r#"query {
+        c1: cult(id: 1) {
+            id
+            name
+        }
+        c2: cult(id: 2) {
+            id
+            name
+        }
+        c3: cult(id: 3) {
+            id
+            name
+        }
         persons {
           id
           name
@@ -118,7 +132,7 @@ fn main() {
             name
           }
         }
-      }";
+      }"#;
     let f = juniper::execute_async(q, None, &schema, &vars, &ctx);
     let (_res, _errors) = task::block_on(f).unwrap();
 }

@@ -48,9 +48,13 @@ impl Query {
     #[field]
     async fn persons(&self, _ctx: &Context<'_>) -> Vec<Person> {
         let persons = fake::vec![Person; 10..20];
-        println!("get persons");
         persons
     }
+
+    #[field]
+    async fn cult(&self, ctx: &Context<'_>, id: i32) -> Cult {
+        ctx.data::<AppContext>().cult_loader.load(id).await.expect("get cult")
+    }    
 }
 
 #[derive(Debug, Clone, Dummy)]
@@ -77,7 +81,6 @@ impl Person {
 
     #[field]
     async fn cult(&self, ctx: &Context<'_>) -> Cult {
-        println!("load Person[{}].cult[{}]", self.id, self.cult);
         let fut = ctx.data::<AppContext>().cult_loader.load(self.cult);
         fut.await.expect("get cult")
     }
@@ -108,7 +111,19 @@ fn main() {
     env_logger::init();
 
     let schema = Schema::new(Query, EmptyMutation, EmptySubscription).data(AppContext::new());
-    let q = "query {
+    let q = r#"query {
+        c1: cult(id: 1) {
+            id
+            name
+        }
+        c2: cult(id: 2) {
+            id
+            name
+        }
+        c3: cult(id: 3) {
+            id
+            name
+        }
         persons {
           id
           name
@@ -117,7 +132,7 @@ fn main() {
             name
           }
         }
-      }";
+      }"#;
     let f = schema.query(&q).execute();
     let _r = task::block_on(f).unwrap();
 }
