@@ -15,6 +15,7 @@ where
     pending: Arc<Mutex<HashSet<K>>>,
     load_fn: Arc<Mutex<F>>,
     max_batch_size: usize,
+    yield_count: usize,
 }
 
 impl<K, V, E, F> Clone for Loader<K, V, E, F>
@@ -30,6 +31,7 @@ where
             pending: self.pending.clone(),
             max_batch_size: self.max_batch_size.clone(),
             load_fn: self.load_fn.clone(),
+            yield_count: self.yield_count.clone(),
         }
     }
 }
@@ -47,8 +49,19 @@ where
             pending: Arc::new(Mutex::new(HashSet::new())),
             max_batch_size: load_fn.max_batch_size(),
             load_fn: Arc::new(Mutex::new(load_fn)),
+            yield_count: 10
         }
     }
+
+    pub fn with_yield_count(load_fn: F, yield_count: usize) -> Loader<K, V, E, F> {
+        Loader {
+            completed: Arc::new(Mutex::new(HashMap::new())),
+            pending: Arc::new(Mutex::new(HashSet::new())),
+            max_batch_size: load_fn.max_batch_size(),
+            load_fn: Arc::new(Mutex::new(load_fn)),
+            yield_count: yield_count
+        }
+    }    
 
     pub async fn load(&self, key: K) -> Result<V, F::Error> {
         let mut pending = self.pending.lock().await;
@@ -76,7 +89,13 @@ where
         }
         drop(completed);
         drop(pending);
-        task::yield_now().await;
+
+        // yield for other load to append request
+        let mut i = 0;
+        while i < self.yield_count {
+            task::yield_now().await;
+            i += 1;
+        }
 
         let mut pending = self.pending.lock().await;
         let mut completed = self.completed.lock().await;
@@ -100,51 +119,9 @@ where
 
     pub async fn load_many(&self, keys: Vec<K>) -> HashMap<K, Result<V, F::Error>> {
         let mut ret = HashMap::new();
-        let mut rest = HashSet::new();
         for key in keys.into_iter() {
-            let mut pending = self.pending.lock().await;
-            let mut completed = self.completed.lock().await;
-            if let Some(v) = completed.get(&key) {
-                ret.insert(key, (*v).clone());
-                continue;
-            }
-            if pending.get(&key).is_none() {
-                pending.insert(key.clone());
-                if pending.len() >= self.max_batch_size {
-                    let batches = pending.drain().collect::<Vec<K>>();
-                    for batch in batches.chunks(self.max_batch_size).into_iter() {
-                        let load_fn = self.load_fn.lock().await;
-                        let load_ret = load_fn.load(batch.as_ref()).await;                        
-                        for (k, v) in load_ret.into_iter() {
-                            completed.insert(k, v);
-                        }
-                        let v = completed
-                            .get(&key)
-                            .cloned()
-                            .expect("found result in completed");
-                        ret.insert(key.clone(), v);
-                        continue;
-                    }
-                }
-            }
-            rest.insert(key);
-        }
-        task::yield_now().await;
-
-        let mut pending = self.pending.lock().await;
-        let mut completed = self.completed.lock().await;
-        let batches = pending.drain().collect::<Vec<K>>();
-        for batch in batches.chunks(self.max_batch_size).into_iter() {
-            let load_fn = self.load_fn.lock().await;
-            let load_ret = load_fn.load(batch.as_ref()).await;
-            for (k, v) in load_ret.into_iter() {
-                completed.insert(k, v);
-            }
-        }
-        for key in rest.into_iter() {
-            if let Some(v) = completed.get(&key) {
-                ret.insert(key, (*v).clone());
-            }
+            let v = self.load(key.clone()).await;
+            ret.insert(key, v);
         }
         ret
     }

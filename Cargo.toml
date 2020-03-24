@@ -1,6 +1,6 @@
 [package]
 name = "dataloader"
-version = "0.8.0"
+version = "0.8.1"
 edition = "2018"
 authors = ["cksac <cs.cksac@gmail.com>"]
 description = "Rust implementation of Facebook's DataLoader using futures."
@@ -24,5 +24,4 @@ async-std = { version = "1.0", features = ["unstable"] }
 juniper = { git = "https://github.com/graphql-rust/juniper", branch = "async-await", features = ["async"] }
 fake = { version = "2.0", features = ["derive"] }
 rand = "0.7.3"
-env_logger = "0.6"
 async-graphql = "1.4.4"

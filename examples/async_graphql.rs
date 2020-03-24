@@ -53,8 +53,12 @@ impl Query {
 
     #[field]
     async fn cult(&self, ctx: &Context<'_>, id: i32) -> Cult {
-        ctx.data::<AppContext>().cult_loader.load(id).await.expect("get cult")
-    }    
+        ctx.data::<AppContext>()
+            .cult_loader
+            .load(id)
+            .await
+            .expect("get cult")
+    }
 }
 
 #[derive(Debug, Clone, Dummy)]
@@ -84,6 +88,15 @@ impl Person {
         let fut = ctx.data::<AppContext>().cult_loader.load(self.cult);
         fut.await.expect("get cult")
     }
+
+    #[field]
+    async fn cult_by_id(&self, ctx: &Context<'_>, id: i32) -> Cult {
+        ctx.data::<AppContext>()
+            .cult_loader
+            .load(id)
+            .await
+            .expect("get cult")
+    }
 }
 
 #[derive(Debug, Clone, Dummy)]
@@ -108,31 +121,42 @@ impl Cult {
 }
 
 fn main() {
-    env_logger::init();
-
     let schema = Schema::new(Query, EmptyMutation, EmptySubscription).data(AppContext::new());
-    let q = r#"query {
-        c1: cult(id: 1) {
-            id
-            name
-        }
-        c2: cult(id: 2) {
-            id
-            name
-        }
-        c3: cult(id: 3) {
-            id
-            name
-        }
-        persons {
-          id
-          name
-          cult {
-            id
-            name
-          }
-        }
-      }"#;
+    let q = r#"
+        query {
+            c1: cult(id: 1) {
+              id
+              name
+            }
+            c2: cult(id: 2) {
+              id
+              name
+            }
+            c3: cult(id: 3) {
+              id
+              name
+            }
+            persons {
+              id
+              name
+              cult {
+                id
+                name
+              }
+              c1: cultById(id: 4) {
+                id
+                name
+              }
+              c2: cultById(id: 5) {
+                id
+                name
+              }
+              c3: cultById(id: 6) {
+                id
+                name
+              }
+            }
+        }"#;
     let f = schema.query(&q).execute();
     let _r = task::block_on(f).unwrap();
 }

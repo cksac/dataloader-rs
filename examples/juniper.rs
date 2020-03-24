@@ -80,9 +80,13 @@ impl Person {
         self.name.as_str()
     }
 
-    pub async fn cult(&self, ctx: &AppContext) -> FieldResult<Option<Cult>> {        
+    pub async fn cult(&self, ctx: &AppContext) -> FieldResult<Option<Cult>> {
         let fut = ctx.cult_loader.load(self.cult);
         Ok(Some(fut.await.expect("get cult")))
+    }
+
+    pub async fn cult_by_id(&self, id: i32, ctx: &AppContext) -> Cult {
+        ctx.cult_loader.load(id).await.expect("get cult")
     }
 }
 
@@ -106,33 +110,44 @@ impl Cult {
 }
 
 fn main() {
-    env_logger::init();
-
     let ctx = AppContext::new();
     let schema = Schema::new(Query, EmptyMutation::new());
     let vars = Variables::new();
-    let q = r#"query {
-        c1: cult(id: 1) {
-            id
-            name
-        }
-        c2: cult(id: 2) {
-            id
-            name
-        }
-        c3: cult(id: 3) {
-            id
-            name
-        }
-        persons {
-          id
-          name
-          cult {
-            id
-            name
-          }
-        }
-      }"#;
+    let q = r#"
+        query {
+            c1: cult(id: 1) {
+              id
+              name
+            }
+            c2: cult(id: 2) {
+              id
+              name
+            }
+            c3: cult(id: 3) {
+              id
+              name
+            }
+            persons {
+              id
+              name
+              cult {
+                id
+                name
+              }
+              c1: cultById(id: 4) {
+                id
+                name
+              }
+              c2: cultById(id: 5) {
+                id
+                name
+              }
+              c3: cultById(id: 6) {
+                id
+                name
+              }
+            }
+        }"#;
     let f = juniper::execute_async(q, None, &schema, &vars, &ctx);
     let (_res, _errors) = task::block_on(f).unwrap();
 }
