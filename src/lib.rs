@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use std::collections::HashMap;
-
 pub mod eager;
 
 #[cfg(test)]
@@ -14,5 +13,9 @@ pub trait BatchFn<K, V> {
         200
     }
 
-    async fn load(&self, keys: &[K]) -> HashMap<K, Result<V, Self::Error>>;
+    async fn load(&self, keys: &[K]) -> HashMap<K, Result<V, Self::Error>>
+    where
+        K: 'async_trait,
+        V: 'async_trait,
+        Self::Error: 'async_trait;
 }

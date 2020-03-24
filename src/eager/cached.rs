@@ -51,27 +51,22 @@ where
     }
 
     pub async fn load(&self, key: K) -> Result<V, F::Error> {
-        let completed = self.completed.lock().await;
-        if let Some(v) = completed.get(&key) {
-            return (*v).clone();
-        }
-        drop(completed);
-
         let mut pending = self.pending.lock().await;
-        let completed = self.completed.lock().await;
+        let mut completed = self.completed.lock().await;
         if let Some(v) = completed.get(&key) {
             return (*v).clone();
         }
-        drop(completed);
+
         if pending.get(&key).is_none() {
             pending.insert(key.clone());
             if pending.len() >= self.max_batch_size {
-                let keys = pending.drain().collect::<Vec<K>>();
-                let load_fn = self.load_fn.lock().await;
-                let load_ret = load_fn.load(keys.as_ref()).await;
-                let mut completed = self.completed.lock().await;
-                for (k, v) in load_ret.into_iter() {
-                    completed.insert(k, v);
+                let batches = pending.drain().collect::<Vec<K>>();
+                for keys in batches.chunks(self.max_batch_size).into_iter() {
+                    let load_fn = self.load_fn.lock().await;
+                    let load_ret = load_fn.load(keys.as_ref()).await;
+                    for (k, v) in load_ret.into_iter() {
+                        completed.insert(k, v);
+                    }
                 }
                 return completed
                     .get(&key)
@@ -79,22 +74,23 @@ where
                     .expect("found result in completed");
             }
         }
+        drop(completed);
         drop(pending);
         task::yield_now().await;
 
         let mut pending = self.pending.lock().await;
-        let completed = self.completed.lock().await;
+        let mut completed = self.completed.lock().await;
         if let Some(v) = completed.get(&key) {
             return (*v).clone();
         }
-        drop(completed);
-        let keys = pending.drain().collect::<Vec<K>>();
 
-        let load_fn = self.load_fn.lock().await;
-        let load_ret = load_fn.load(keys.as_ref()).await;
-        let mut completed = self.completed.lock().await;
-        for (k, v) in load_ret.into_iter() {
-            completed.insert(k, v);
+        let batches = pending.drain().collect::<Vec<K>>();
+        for keys in batches.chunks(self.max_batch_size).into_iter() {
+            let load_fn = self.load_fn.lock().await;
+            let load_ret = load_fn.load(keys.as_ref()).await;
+            for (k, v) in load_ret.into_iter() {
+                completed.insert(k, v);
+            }
         }
         return completed
             .get(&key)
@@ -106,28 +102,19 @@ where
         let mut ret = HashMap::new();
         let mut rest = HashSet::new();
         for key in keys.into_iter() {
-            let completed = self.completed.lock().await;
-            if let Some(v) = completed.get(&key) {
-                ret.insert(key, (*v).clone());
-                continue;
-            }
-            drop(completed);
-
             let mut pending = self.pending.lock().await;
-            let completed = self.completed.lock().await;
+            let mut completed = self.completed.lock().await;
             if let Some(v) = completed.get(&key) {
                 ret.insert(key, (*v).clone());
                 continue;
             }
-            drop(completed);
             if pending.get(&key).is_none() {
                 pending.insert(key.clone());
                 if pending.len() >= self.max_batch_size {
-                    let keys = pending.drain().collect::<Vec<K>>();
-                    if keys.len() > 0 {
+                    let batches = pending.drain().collect::<Vec<K>>();
+                    for batch in batches.chunks(self.max_batch_size).into_iter() {
                         let load_fn = self.load_fn.lock().await;
-                        let load_ret = load_fn.load(keys.as_ref()).await;
-                        let mut completed = self.completed.lock().await;
+                        let load_ret = load_fn.load(batch.as_ref()).await;                        
                         for (k, v) in load_ret.into_iter() {
                             completed.insert(k, v);
                         }
@@ -135,22 +122,21 @@ where
                             .get(&key)
                             .cloned()
                             .expect("found result in completed");
-                        ret.insert(key, v);
+                        ret.insert(key.clone(), v);
                         continue;
                     }
                 }
             }
-            drop(pending);
             rest.insert(key);
         }
-
         task::yield_now().await;
+
         let mut pending = self.pending.lock().await;
         let mut completed = self.completed.lock().await;
-        let keys = pending.drain().collect::<Vec<K>>();
-        if keys.len() > 0 {
+        let batches = pending.drain().collect::<Vec<K>>();
+        for batch in batches.chunks(self.max_batch_size).into_iter() {
             let load_fn = self.load_fn.lock().await;
-            let load_ret = load_fn.load(keys.as_ref()).await;
+            let load_ret = load_fn.load(batch.as_ref()).await;
             for (k, v) in load_ret.into_iter() {
                 completed.insert(k, v);
             }
