@@ -49,7 +49,7 @@ where
             pending: Arc::new(Mutex::new(HashSet::new())),
             max_batch_size: load_fn.max_batch_size(),
             load_fn: Arc::new(Mutex::new(load_fn)),
-            yield_count: 10
+            yield_count: 10,
         }
     }
 
@@ -59,9 +59,9 @@ where
             pending: Arc::new(Mutex::new(HashSet::new())),
             max_batch_size: load_fn.max_batch_size(),
             load_fn: Arc::new(Mutex::new(load_fn)),
-            yield_count: yield_count
+            yield_count: yield_count,
         }
-    }    
+    }
 
     pub async fn load(&self, key: K) -> Result<V, F::Error> {
         let mut pending = self.pending.lock().await;
