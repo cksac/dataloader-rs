@@ -4,7 +4,7 @@
 [![Crates.io](https://img.shields.io/crates/v/dataloader.svg)](https://crates.io/crates/dataloader)
 [![Coverage Status](https://coveralls.io/repos/github/cksac/dataloader-rs/badge.svg?branch=master)](https://coveralls.io/github/cksac/dataloader-rs?branch=master)
 
-Rust implementation of [Facebook's DataLoader](https://github.com/facebook/dataloader) using [futures](https://docs.rs/futures-preview).
+Rust implementation of [Facebook's DataLoader](https://github.com/facebook/dataloader).
 
 [Documentation](https://docs.rs/dataloader)
 
