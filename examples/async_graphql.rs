@@ -1,7 +1,7 @@
 use async_graphql::{Context, EmptyMutation, EmptySubscription, Schema};
 use async_std::task;
 use async_trait::async_trait;
-use dataloader::eager::cached::Loader;
+use dataloader::cached::Loader;
 use dataloader::BatchFn;
 use fake::faker::company::en::CompanyName;
 use fake::faker::name::en::Name;

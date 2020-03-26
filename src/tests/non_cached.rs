@@ -1,10 +1,10 @@
-use crate::eager::cached::Loader;
+use crate::non_cached::Loader;
 use crate::BatchFn;
 use async_std::prelude::*;
 use async_std::sync::{Arc, Mutex};
 use async_std::task;
 use async_trait::async_trait;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::thread;
 
 struct MyLoadFn;
@@ -57,13 +57,12 @@ fn assert_kinds() {
 }
 
 #[derive(Clone)]
-struct LoadFnWithHistory<K> {
-    loaded_keys: Arc<Mutex<HashSet<K>>>,
+struct LoadFnWithHistory {
     max_batch_loaded: Arc<Mutex<usize>>,
 }
 
 #[async_trait]
-impl BatchFn<usize, usize> for LoadFnWithHistory<usize> {
+impl BatchFn<usize, usize> for LoadFnWithHistory {
     type Error = ();
 
     fn max_batch_size(&self) -> usize {
@@ -72,22 +71,12 @@ impl BatchFn<usize, usize> for LoadFnWithHistory<usize> {
 
     async fn load(&self, keys: &[usize]) -> HashMap<usize, Result<usize, Self::Error>> {
         // println!("BatchFn load keys {:?}", keys);
-        let mut loaded_keys = self.loaded_keys.lock().await;
         let mut max_batch_loaded = self.max_batch_loaded.lock().await;
         if keys.len() > *max_batch_loaded {
             *max_batch_loaded = keys.len();
         }
-        for k in keys {
-            if loaded_keys.contains(k) {
-                panic!("already loaded, loader should not request same key");
-            }
-        }
-
         keys.iter()
-            .map(|v| {
-                loaded_keys.insert(v.clone());
-                (v.clone(), Ok(v.clone()))
-            })
+            .map(|v| (v.clone(), Ok(v.clone())))
             .collect::<HashMap<_, _>>()
     }
 }
@@ -97,7 +86,6 @@ fn test_load() {
     let mut i = 0;
     while i < 1000 {
         let load_fn = LoadFnWithHistory {
-            loaded_keys: Arc::new(Mutex::new(HashSet::new())),
             max_batch_loaded: Arc::new(Mutex::new(0)),
         };
         let loader = Loader::new(load_fn.clone());
@@ -147,55 +135,4 @@ fn test_load() {
             max_batch_size
         );
     }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-struct ObjectId(usize);
-
-#[async_trait]
-trait Model {
-    async fn load_many(keys: &[ObjectId]) -> HashMap<ObjectId, Result<Option<Self>, ()>>
-    where
-        Self: Sized;
-}
-
-#[derive(Debug, Clone)]
-struct MyModel;
-
-#[async_trait]
-impl Model for MyModel {
-    async fn load_many(keys: &[ObjectId]) -> HashMap<ObjectId, Result<Option<MyModel>, ()>>
-    where
-        Self: Sized,
-    {
-        keys.iter()
-            .map(|k| (k.clone(), Ok(Some(MyModel))))
-            .collect()
-    }
-}
-
-pub struct ModelBatcher;
-
-#[async_trait]
-impl<T> BatchFn<ObjectId, Option<T>> for ModelBatcher
-where
-    T: Model,
-{
-    type Error = ();
-
-    async fn load(&self, keys: &[ObjectId]) -> HashMap<ObjectId, Result<Option<T>, Self::Error>>
-    where
-        T: 'async_trait,
-    {
-        println!("load batch {:?}", keys);
-        T::load_many(&keys).await
-    }
-}
-
-#[test]
-fn test_generic() {
-    let loader = Loader::new(ModelBatcher);
-    let f = loader.load_many(vec![ObjectId(1), ObjectId(3), ObjectId(2)]);
-    let my_model: HashMap<ObjectId, Result<Option<MyModel>, ()>> = task::block_on(f);
-    println!("{:?}", my_model);
 }

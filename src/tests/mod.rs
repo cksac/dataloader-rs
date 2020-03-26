@@ -1,1 +1,3 @@
-pub mod eager_cached;
+pub mod cached;
+pub mod generic;
+pub mod non_cached;
