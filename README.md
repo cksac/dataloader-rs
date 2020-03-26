@@ -9,19 +9,15 @@ Rust implementation of [Facebook's DataLoader](https://github.com/facebook/datal
 [Documentation](https://docs.rs/dataloader)
 
 ## Features
-* Eager loader
-    * [x] Batching load requests with caching
-    * [ ] Batching load requests without caching
-* Lazy loader
-    * [ ] Batching load requests with caching
-    * [ ] Batching load requests without caching
+* [x] Batching load requests with caching
+* [x] Batching load requests without caching
 
 ## Usage
 
 Add to your `Cargo.toml`:
 ```toml
 [dependencies]
-dataloader = "0.8"
+dataloader = "0.9"
 futures = { version = "0.3" }
 async-trait = "0.1"
 
@@ -35,7 +31,7 @@ example:
 use async_std::prelude::*;
 use async_std::task;
 use async_trait::async_trait;
-use dataloader::eager::cached::Loader;
+use dataloader::cached::Loader;
 use dataloader::BatchFn;
 use std::collections::HashMap;
 use std::thread;
