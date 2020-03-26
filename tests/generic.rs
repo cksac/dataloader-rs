@@ -1,7 +1,7 @@
-use crate::cached::Loader;
-use crate::BatchFn;
 use async_std::task;
 use async_trait::async_trait;
+use dataloader::cached::Loader;
+use dataloader::BatchFn;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]

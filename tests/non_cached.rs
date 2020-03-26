@@ -1,9 +1,9 @@
-use crate::non_cached::Loader;
-use crate::BatchFn;
 use async_std::prelude::*;
 use async_std::sync::{Arc, Mutex};
 use async_std::task;
 use async_trait::async_trait;
+use dataloader::non_cached::Loader;
+use dataloader::BatchFn;
 use std::collections::HashMap;
 use std::thread;
 
