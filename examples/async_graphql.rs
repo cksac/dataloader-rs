@@ -1,11 +1,11 @@
 use async_graphql::{Context, EmptyMutation, EmptySubscription, Schema};
-use async_std::task;
 use async_trait::async_trait;
 use dataloader::cached::Loader;
 use dataloader::BatchFn;
 use fake::faker::company::en::CompanyName;
 use fake::faker::name::en::Name;
 use fake::{Dummy, Fake, Faker};
+use futures::executor::block_on;
 use std::collections::HashMap;
 
 pub struct CultBatcher;
@@ -158,5 +158,5 @@ fn main() {
             }
         }"#;
     let f = schema.query(&q).execute();
-    let _r = task::block_on(f).unwrap();
+    let _r = block_on(f).unwrap();
 }

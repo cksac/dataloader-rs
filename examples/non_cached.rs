@@ -1,8 +1,7 @@
-use async_std::prelude::*;
-use async_std::task;
 use async_trait::async_trait;
 use dataloader::non_cached::Loader;
 use dataloader::BatchFn;
+use futures::executor::block_on;
 use std::collections::HashMap;
 use std::thread;
 
@@ -37,8 +36,8 @@ fn main() {
             let r3 = l1.load(3);
 
             let r4 = l1.load_many(vec![2, 3, 4, 5, 6, 7, 8]);
-            let f = r1.join(r2).join(r3).join(r4);
-            println!("{:?}", task::block_on(f));
+            let f = futures::future::join4(r1, r2, r3, r4);
+            println!("{:?}", block_on(f));
         });
 
         let l2 = loader.clone();
@@ -47,8 +46,8 @@ fn main() {
             let r2 = l2.load(2);
             let r3 = l2.load(3);
             let r4 = l2.load(4);
-            let f = r1.join(r2).join(r3).join(r4);
-            println!("{:?}", task::block_on(f));
+            let f = futures::future::join4(r1, r2, r3, r4);
+            println!("{:?}", block_on(f));
         });
 
         h1.join().unwrap();

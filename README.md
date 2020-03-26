@@ -13,26 +13,25 @@ Rust implementation of [Facebook's DataLoader](https://github.com/facebook/datal
 * [x] Batching load requests without caching
 
 ## Usage
+### Switching runtime, by using cargo features
+- `runtime-async-std` (default), to use the [async-std](https://async.rs) runtime
+- `runtime-tokio` to use the [Tokio](https://tokio.rs) runtime
 
-Add to your `Cargo.toml`:
+
+### Add to your `Cargo.toml`:
 ```toml
 [dependencies]
-dataloader = "0.9"
-futures = { version = "0.3" }
+dataloader = { version = "0.9", default-features = false, features = ["runtime-tokio"]}
+futures = "0.3"
 async-trait = "0.1"
-
-[dependencies.async-std]
-version = "1.0"
-features = ["unstable"]
 ```
 
-example:
+### Example:
 ```rust
-use async_std::prelude::*;
-use async_std::task;
 use async_trait::async_trait;
 use dataloader::cached::Loader;
 use dataloader::BatchFn;
+use futures::executor::block_on;
 use std::collections::HashMap;
 use std::thread;
 
@@ -67,8 +66,8 @@ fn main() {
             let r3 = l1.load(3);
 
             let r4 = l1.load_many(vec![2, 3, 4, 5, 6, 7, 8]);
-            let f = r1.join(r2).join(r3).join(r4);
-            println!("{:?}", task::block_on(f));
+            let f = futures::future::join4(r1, r2, r3, r4);
+            println!("{:?}", block_on(f));
         });
 
         let l2 = loader.clone();
@@ -77,8 +76,8 @@ fn main() {
             let r2 = l2.load(2);
             let r3 = l2.load(3);
             let r4 = l2.load(4);
-            let f = r1.join(r2).join(r3).join(r4);
-            println!("{:?}", task::block_on(f));
+            let f = futures::future::join4(r1, r2, r3, r4);
+            println!("{:?}", block_on(f));
         });
 
         h1.join().unwrap();

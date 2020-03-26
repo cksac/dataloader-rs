@@ -1,5 +1,6 @@
+mod batch_fn;
 pub mod cached;
 pub mod non_cached;
+mod runtime;
 
-mod batch_fn;
 pub use batch_fn::BatchFn;

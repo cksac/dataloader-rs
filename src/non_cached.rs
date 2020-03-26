@@ -1,6 +1,5 @@
+use crate::runtime::{yield_now, Arc, Mutex};
 use crate::BatchFn;
-use async_std::sync::{Arc, Mutex};
-use async_std::task;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -108,7 +107,7 @@ where
         // yield for other load to append request
         let mut i = 0;
         while i < self.yield_count {
-            task::yield_now().await;
+            yield_now().await;
             i += 1;
         }
 
@@ -172,7 +171,7 @@ where
         // yield for other load to append request
         let mut i = 0;
         while i < self.yield_count {
-            task::yield_now().await;
+            yield_now().await;
             i += 1;
         }
 

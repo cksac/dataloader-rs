@@ -1,7 +1,7 @@
-use async_std::task;
 use async_trait::async_trait;
 use dataloader::cached::Loader;
 use dataloader::BatchFn;
+use futures::executor::block_on;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -51,6 +51,6 @@ where
 fn test_generic() {
     let loader = Loader::new(ModelBatcher);
     let f = loader.load_many(vec![ObjectId(1), ObjectId(3), ObjectId(2)]);
-    let my_model: HashMap<ObjectId, Result<Option<MyModel>, ()>> = task::block_on(f);
+    let my_model: HashMap<ObjectId, Result<Option<MyModel>, ()>> = block_on(f);
     println!("{:?}", my_model);
 }

@@ -1,10 +1,10 @@
-use async_std::task;
 use async_trait::async_trait;
 use dataloader::cached::Loader;
 use dataloader::BatchFn;
 use fake::faker::company::en::CompanyName;
 use fake::faker::name::en::Name;
 use fake::{Dummy, Fake, Faker};
+use futures::executor::block_on;
 use juniper;
 use juniper::{EmptyMutation, FieldResult, Variables};
 use std::collections::HashMap;
@@ -149,5 +149,5 @@ fn main() {
             }
         }"#;
     let f = juniper::execute_async(q, None, &schema, &vars, &ctx);
-    let (_res, _errors) = task::block_on(f).unwrap();
+    let (_res, _errors) = block_on(f).unwrap();
 }
