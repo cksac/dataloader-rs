@@ -136,3 +136,27 @@ fn test_load() {
         );
     }
 }
+
+#[test]
+fn test_load_many() {
+    let mut i = 0;
+    while i < 10 {
+        let load_fn = LoadFnWithHistory {
+            max_batch_loaded: Arc::new(Mutex::new(0)),
+        };
+        let loader = Loader::new(load_fn.clone());
+        let r = loader.load_many(vec![2, 3, 4, 5, 6, 7, 8]);
+        let _fv = task::block_on(r);
+        i += 1;
+
+        let max_batch_size = load_fn.max_batch_size();
+        let max_batch_loaded = task::block_on(load_fn.max_batch_loaded.lock());
+        assert!(*max_batch_loaded > 1);
+        assert!(
+            *max_batch_loaded <= max_batch_size,
+            "max_batch_loaded({}) <= max_batch_size({})",
+            *max_batch_loaded,
+            max_batch_size
+        );
+    }
+}
