@@ -21,6 +21,10 @@ impl<K, V, E> State<K, V, E> {
             id_seq: 0,
         }
     }
+    fn next_request_id(&mut self) -> RequestId {
+        self.id_seq = self.id_seq.wrapping_add(1);
+        self.id_seq
+    }
 }
 
 pub struct Loader<K, V, E, F>
@@ -75,8 +79,7 @@ where
 
     pub async fn load(&self, key: K) -> Result<V, F::Error> {
         let mut state = self.state.lock().await;
-        let request_id = state.id_seq;
-        state.id_seq = state.id_seq.wrapping_add(1);
+        let request_id = state.next_request_id();
         state.pending.insert(request_id, key);
         if state.pending.len() >= self.max_batch_size {
             let batch = state.pending.drain().collect::<HashMap<usize, K>>();
@@ -138,11 +141,79 @@ where
     }
 
     pub async fn load_many(&self, keys: Vec<K>) -> HashMap<K, Result<V, F::Error>> {
+        let mut state = self.state.lock().await;
         let mut ret = HashMap::new();
+        let mut requests = Vec::new();
         for key in keys.into_iter() {
-            let v = self.load(key.clone()).await;
-            ret.insert(key, v);
+            let request_id = state.next_request_id();
+            requests.push((request_id, key.clone()));
+            state.pending.insert(request_id, key);
+            if state.pending.len() >= self.max_batch_size {
+                let batch = state.pending.drain().collect::<HashMap<usize, K>>();
+                let mut keys: Vec<K> = batch.values().cloned().collect::<Vec<K>>();
+                keys.dedup();
+                let load_fn = self.load_fn.lock().await;
+                let load_ret = load_fn.load(keys.as_ref()).await;
+                drop(load_fn);
+                for (request_id, key) in batch.into_iter() {
+                    state.completed.insert(
+                        request_id,
+                        load_ret
+                            .get(&key)
+                            .unwrap_or_else(|| panic!("found key {:?} in load result", key))
+                            .clone(),
+                    );
+                }
+            }
         }
+
+        drop(state);
+
+        // yield for other load to append request
+        let mut i = 0;
+        while i < self.yield_count {
+            task::yield_now().await;
+            i += 1;
+        }
+
+        let mut state = self.state.lock().await;
+
+        let mut rest = Vec::new();
+        for (request_id, key) in requests.into_iter() {
+            if let Some(v) = state.completed.remove(&request_id) {
+                ret.insert(key, v);
+            } else {
+                rest.push((request_id, key));
+            }
+        }
+
+        if !rest.is_empty() {
+            let batch = state.pending.drain().collect::<HashMap<usize, K>>();
+            if !batch.is_empty() {
+                let mut keys: Vec<K> = batch.values().cloned().collect::<Vec<K>>();
+                keys.dedup();
+                let load_fn = self.load_fn.lock().await;
+                let load_ret = load_fn.load(keys.as_ref()).await;
+                drop(load_fn);
+                for (request_id, key) in batch.into_iter() {
+                    state.completed.insert(
+                        request_id,
+                        load_ret
+                            .get(&key)
+                            .unwrap_or_else(|| panic!("found key {:?} in load result", key))
+                            .clone(),
+                    );
+                }
+            }
+            for (request_id, key) in rest.into_iter() {
+                let v = state
+                    .completed
+                    .remove(&request_id)
+                    .unwrap_or_else(|| panic!("found key {:?} in load result", key));
+                ret.insert(key, v);
+            }
+        }
+
         ret
     }
 }

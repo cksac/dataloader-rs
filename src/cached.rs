@@ -115,6 +115,7 @@ where
                 state.completed.insert(k, v);
             }
         }
+
         state
             .completed
             .get(&key)
@@ -123,11 +124,59 @@ where
     }
 
     pub async fn load_many(&self, keys: Vec<K>) -> HashMap<K, Result<V, F::Error>> {
+        let mut state = self.state.lock().await;
         let mut ret = HashMap::new();
+        let mut rest = Vec::new();
         for key in keys.into_iter() {
-            let v = self.load(key.clone()).await;
-            ret.insert(key, v);
+            if let Some(v) = state.completed.get(&key).cloned() {
+                ret.insert(key, v);
+                continue;
+            }
+            if state.pending.get(&key).is_none() {
+                state.pending.insert(key.clone());
+                if state.pending.len() >= self.max_batch_size {
+                    let keys = state.pending.drain().collect::<Vec<K>>();
+                    let load_fn = self.load_fn.lock().await;
+                    let load_ret = load_fn.load(keys.as_ref()).await;
+                    drop(load_fn);
+                    for (k, v) in load_ret.into_iter() {
+                        state.completed.insert(k, v);
+                    }
+                }
+            }
+            rest.push(key);
         }
+        drop(state);
+
+        // yield for other load to append request
+        let mut i = 0;
+        while i < self.yield_count {
+            task::yield_now().await;
+            i += 1;
+        }
+
+        if !rest.is_empty() {
+            let mut state = self.state.lock().await;
+            if !state.pending.is_empty() {
+                let keys = state.pending.drain().collect::<Vec<K>>();
+                let load_fn = self.load_fn.lock().await;
+                let load_ret = load_fn.load(keys.as_ref()).await;
+                drop(load_fn);
+                for (k, v) in load_ret.into_iter() {
+                    state.completed.insert(k, v);
+                }
+            }
+
+            for key in rest.into_iter() {
+                let v = state
+                    .completed
+                    .get(&key)
+                    .cloned()
+                    .unwrap_or_else(|| panic!("found key {:?} in load result", key));
+                ret.insert(key, v);
+            }
+        }
+
         ret
     }
 

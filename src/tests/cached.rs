@@ -110,7 +110,11 @@ fn test_load() {
 
             let r4 = l1.load_many(vec![2, 3, 4, 5, 6, 7, 8]);
             let f = r1.join(r2).join(r3).join(r4);
-            let _fv = task::block_on(f);
+            let fv = task::block_on(f);
+            let (((_v1, _v2), _v3), v4) = fv;
+            let mut v4_keys = v4.keys().cloned().collect::<Vec<_>>();
+            v4_keys.sort();
+            assert_eq!(vec![2, 3, 4, 5, 6, 7, 8], v4_keys);
         });
 
         let l2 = loader.clone();
@@ -129,7 +133,20 @@ fn test_load() {
             let r2 = l3.load_many(vec![1, 2, 3, 4, 5, 6, 7]);
             let r3 = l3.load_many(vec![9, 10, 11, 12, 13, 14]);
             let f = r1.join(r2).join(r3);
-            let _fv = task::block_on(f);
+            let fv = task::block_on(f);
+
+            let ((v1, v2), v3) = fv;
+            let mut v1_keys = v1.keys().cloned().collect::<Vec<_>>();
+            v1_keys.sort();
+            assert_eq!(vec![1, 2, 3, 4, 12, 13, 14], v1_keys);
+
+            let mut v2_keys = v2.keys().cloned().collect::<Vec<_>>();
+            v2_keys.sort();
+            assert_eq!(vec![1, 2, 3, 4, 5, 6, 7], v2_keys);
+
+            let mut v3_keys = v3.keys().cloned().collect::<Vec<_>>();
+            v3_keys.sort();
+            assert_eq!(vec![9, 10, 11, 12, 13, 14], v3_keys);
         });
 
         h1.join().unwrap();
