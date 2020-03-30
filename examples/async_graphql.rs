@@ -121,7 +121,9 @@ impl Cult {
 }
 
 fn main() {
-    let schema = Schema::new(Query, EmptyMutation, EmptySubscription).data(AppContext::new());
+    let schema = Schema::build(Query, EmptyMutation, EmptySubscription)
+        .data(AppContext::new())
+        .finish();
     let q = r#"
         query {
             c1: cult(id: 1) {
