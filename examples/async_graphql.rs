@@ -159,6 +159,6 @@ fn main() {
               }
             }
         }"#;
-    let f = schema.query(&q).execute();
+    let f = schema.execute(&q);
     let _r = block_on(f).unwrap();
 }
