@@ -34,5 +34,5 @@ futures = "0.3"
 fake = { version = "2.0", features = ["derive"] }
 rand = "0.7.3"
 juniper = { git = "https://github.com/graphql-rust/juniper", branch = "async-await", features = ["async"] }
-async-graphql = "1.6"
+async-graphql = "1.7.0"
 
