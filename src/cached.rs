@@ -59,10 +59,7 @@ where
         Loader::with_yield_count(load_fn, 10)
     }
 
-    pub fn with_yield_count(
-        load_fn: F,
-        yield_count: usize,
-    ) -> Loader<K, V, E, F> {
+    pub fn with_yield_count(load_fn: F, yield_count: usize) -> Loader<K, V, E, F> {
         Loader {
             state: Arc::new(Mutex::new(State::new())),
             max_batch_size: load_fn.max_batch_size(),
@@ -87,9 +84,11 @@ where
                 for (k, v) in load_ret.into_iter() {
                     state.completed.insert(k, v);
                 }
-                return state.completed.get(&key).cloned().unwrap_or_else(
-                    || panic!("found key {:?} in load result", key),
-                );
+                return state
+                    .completed
+                    .get(&key)
+                    .cloned()
+                    .unwrap_or_else(|| panic!("found key {:?} in load result", key));
             }
         }
         drop(state);
@@ -123,10 +122,7 @@ where
             .unwrap_or_else(|| panic!("found key {:?} in load result", key))
     }
 
-    pub async fn load_many(
-        &self,
-        keys: Vec<K>,
-    ) -> HashMap<K, Result<V, F::Error>> {
+    pub async fn load_many(&self, keys: Vec<K>) -> HashMap<K, Result<V, F::Error>> {
         let mut state = self.state.lock().await;
         let mut ret = HashMap::new();
         let mut rest = Vec::new();
@@ -171,10 +167,11 @@ where
             }
 
             for key in rest.into_iter() {
-                let v =
-                    state.completed.get(&key).cloned().unwrap_or_else(|| {
-                        panic!("found key {:?} in load result", key)
-                    });
+                let v = state
+                    .completed
+                    .get(&key)
+                    .cloned()
+                    .unwrap_or_else(|| panic!("found key {:?} in load result", key));
                 ret.insert(key, v);
             }
         }
@@ -185,5 +182,15 @@ where
     pub async fn prime(&self, key: K, val: V) {
         let mut state = self.state.lock().await;
         state.completed.insert(key, Ok(val));
+    }
+
+    pub async fn clear(&self, key: K) {
+        let mut state = self.state.lock().await;
+        state.completed.remove(&key);
+    }
+
+    pub async fn clear_all(&self) {
+        let mut state = self.state.lock().await;
+        state.completed.clear()
     }
 }
