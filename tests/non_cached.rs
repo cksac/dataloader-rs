@@ -12,10 +12,6 @@ struct MyLoadFn;
 impl BatchFn<usize, usize> for MyLoadFn {
     type Error = ();
 
-    fn max_batch_size(&self) -> usize {
-        4
-    }
-
     async fn load(&self, keys: &[usize]) -> HashMap<usize, Result<usize, Self::Error>> {
         keys.iter()
             .map(|v| (v.clone(), Ok(v.clone())))
@@ -29,10 +25,6 @@ struct Object(usize);
 #[async_trait]
 impl BatchFn<usize, Object> for MyLoadFn {
     type Error = ();
-
-    fn max_batch_size(&self) -> usize {
-        4
-    }
 
     async fn load(&self, keys: &[usize]) -> HashMap<usize, Result<Object, Self::Error>> {
         keys.iter()
@@ -64,10 +56,6 @@ struct LoadFnWithHistory {
 impl BatchFn<usize, usize> for LoadFnWithHistory {
     type Error = ();
 
-    fn max_batch_size(&self) -> usize {
-        4
-    }
-
     async fn load(&self, keys: &[usize]) -> HashMap<usize, Result<usize, Self::Error>> {
         // println!("BatchFn load keys {:?}", keys);
         let mut max_batch_loaded = self.max_batch_loaded.lock().unwrap();
@@ -87,7 +75,7 @@ fn test_load() {
         let load_fn = LoadFnWithHistory {
             max_batch_loaded: Arc::new(Mutex::new(0)),
         };
-        let loader = Loader::new(load_fn.clone());
+        let loader = Loader::new(load_fn.clone()).with_max_batch_size(4);
 
         let l1 = loader.clone();
         let h1 = thread::spawn(move || {
@@ -140,7 +128,7 @@ fn test_load() {
         h3.join().unwrap();
         i += 1;
 
-        let max_batch_size = load_fn.max_batch_size();
+        let max_batch_size = loader.max_batch_size();
         let max_batch_loaded = load_fn.max_batch_loaded.lock().unwrap();
         assert!(*max_batch_loaded > 1);
         assert!(
@@ -159,12 +147,12 @@ fn test_load_many() {
         let load_fn = LoadFnWithHistory {
             max_batch_loaded: Arc::new(Mutex::new(0)),
         };
-        let loader = Loader::new(load_fn.clone());
+        let loader = Loader::new(load_fn.clone()).with_max_batch_size(4);
         let r = loader.load_many(vec![2, 3, 4, 5, 6, 7, 8]);
         let _fv = block_on(r);
         i += 1;
 
-        let max_batch_size = load_fn.max_batch_size();
+        let max_batch_size = loader.max_batch_size();
         let max_batch_loaded = load_fn.max_batch_loaded.lock().unwrap();
         assert!(*max_batch_loaded > 1);
         assert!(

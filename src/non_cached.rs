@@ -35,8 +35,8 @@ where
 {
     state: Arc<Mutex<State<K, V, E>>>,
     load_fn: Arc<Mutex<F>>,
-    max_batch_size: usize,
     yield_count: usize,
+    max_batch_size: usize,
 }
 
 impl<K, V, E, F> Clone for Loader<K, V, E, F>
@@ -49,8 +49,8 @@ where
     fn clone(&self) -> Self {
         Loader {
             state: self.state.clone(),
-            max_batch_size: self.max_batch_size,
             load_fn: self.load_fn.clone(),
+            max_batch_size: self.max_batch_size,
             yield_count: self.yield_count,
         }
     }
@@ -64,16 +64,26 @@ where
     F: BatchFn<K, V, Error = E>,
 {
     pub fn new(load_fn: F) -> Loader<K, V, E, F> {
-        Loader::with_yield_count(load_fn, 10)
-    }
-
-    pub fn with_yield_count(load_fn: F, yield_count: usize) -> Loader<K, V, E, F> {
         Loader {
             state: Arc::new(Mutex::new(State::new())),
-            max_batch_size: load_fn.max_batch_size(),
             load_fn: Arc::new(Mutex::new(load_fn)),
-            yield_count,
+            max_batch_size: 200,
+            yield_count: 10,
         }
+    }
+
+    pub fn with_max_batch_size(mut self, max_batch_size: usize) -> Self {
+        self.max_batch_size = max_batch_size;
+        self
+    }
+
+    pub fn with_yield_count(mut self, yield_count: usize) -> Self {
+        self.yield_count = yield_count;
+        self
+    }
+
+    pub fn max_batch_size(&self) -> usize {
+        self.max_batch_size
     }
 
     pub async fn load(&self, key: K) -> Result<V, F::Error> {

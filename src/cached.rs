@@ -2,41 +2,88 @@ use crate::runtime::{yield_now, Arc, Mutex};
 use crate::BatchFn;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
-use std::hash::Hash;
+use std::hash::{BuildHasher, Hash};
 
-struct State<K, V, E> {
-    completed: HashMap<K, Result<V, E>>,
+pub trait Cache {
+    type Key;
+    type Val;
+    type Error;
+    fn get(&self, key: &Self::Key) -> Option<&Result<Self::Val, Self::Error>>;
+    fn insert(&mut self, key: Self::Key, val: Result<Self::Val, Self::Error>);
+    fn remove(&mut self, key: &Self::Key) -> Option<Result<Self::Val, Self::Error>>;
+    fn clear(&mut self);
+}
+
+impl<K, V, E, S: BuildHasher> Cache for HashMap<K, Result<V, E>, S>
+where
+    K: Eq + Hash,
+{
+    type Key = K;
+    type Val = V;
+    type Error = E;
+
+    #[inline]
+    fn get(&self, key: &K) -> Option<&Result<V, E>> {
+        HashMap::get(self, key)
+    }
+
+    #[inline]
+    fn insert(&mut self, key: K, val: Result<V, E>) {
+        HashMap::insert(self, key, val);
+    }
+
+    #[inline]
+    fn remove(&mut self, key: &K) -> Option<Result<V, E>> {
+        HashMap::remove(self, key)
+    }
+
+    #[inline]
+    fn clear(&mut self) {
+        HashMap::clear(self)
+    }
+}
+
+struct State<K, V, E, C = HashMap<K, Result<V, E>>>
+where
+    C: Cache<Key = K, Val = V, Error = E>,
+{
+    completed: C,
     pending: HashSet<K>,
 }
 
-impl<K: Eq + Hash, V, E> State<K, V, E> {
-    fn new() -> Self {
+impl<K: Eq + Hash, V, E, C> State<K, V, E, C>
+where
+    C: Cache<Key = K, Val = V, Error = E>,
+{
+    fn with_cache(cache: C) -> Self {
         State {
-            completed: HashMap::new(),
+            completed: cache,
             pending: HashSet::new(),
         }
     }
 }
 
-pub struct Loader<K, V, E, F>
+pub struct Loader<K, V, E, F, C = HashMap<K, Result<V, E>>>
 where
     K: Eq + Hash + Clone,
     V: Clone,
     E: Clone,
     F: BatchFn<K, V, Error = E>,
+    C: Cache<Key = K, Val = V, Error = E>,
 {
-    state: Arc<Mutex<State<K, V, E>>>,
+    state: Arc<Mutex<State<K, V, E, C>>>,
     load_fn: Arc<Mutex<F>>,
-    max_batch_size: usize,
     yield_count: usize,
+    pub max_batch_size: usize,
 }
 
-impl<K, V, E, F> Clone for Loader<K, V, E, F>
+impl<K, V, E, F, C> Clone for Loader<K, V, E, F, C>
 where
     K: Eq + Hash + Clone,
     V: Clone,
     E: Clone,
     F: BatchFn<K, V, Error = E>,
+    C: Cache<Key = K, Val = V, Error = E>,
 {
     fn clone(&self) -> Self {
         Loader {
@@ -48,24 +95,48 @@ where
     }
 }
 
-impl<K, V, E, F> Loader<K, V, E, F>
+#[allow(clippy::implicit_hasher)]
+impl<K, V, E, F> Loader<K, V, E, F, HashMap<K, Result<V, E>>>
 where
     K: Eq + Hash + Clone + Debug,
     V: Clone,
     E: Clone,
     F: BatchFn<K, V, Error = E>,
 {
-    pub fn new(load_fn: F) -> Loader<K, V, E, F> {
-        Loader::with_yield_count(load_fn, 10)
+    pub fn new(load_fn: F) -> Loader<K, V, E, F, HashMap<K, Result<V, E>>> {
+        Loader::with_cache(load_fn, HashMap::new())
+    }
+}
+
+impl<K, V, E, F, C> Loader<K, V, E, F, C>
+where
+    K: Eq + Hash + Clone + Debug,
+    V: Clone,
+    E: Clone,
+    F: BatchFn<K, V, Error = E>,
+    C: Cache<Key = K, Val = V, Error = E>,
+{
+    pub fn with_cache(load_fn: F, cache: C) -> Loader<K, V, E, F, C> {
+        Loader {
+            state: Arc::new(Mutex::new(State::with_cache(cache))),
+            load_fn: Arc::new(Mutex::new(load_fn)),
+            max_batch_size: 200,
+            yield_count: 10,
+        }
     }
 
-    pub fn with_yield_count(load_fn: F, yield_count: usize) -> Loader<K, V, E, F> {
-        Loader {
-            state: Arc::new(Mutex::new(State::new())),
-            max_batch_size: load_fn.max_batch_size(),
-            load_fn: Arc::new(Mutex::new(load_fn)),
-            yield_count,
-        }
+    pub fn with_max_batch_size(mut self, max_batch_size: usize) -> Self {
+        self.max_batch_size = max_batch_size;
+        self
+    }
+
+    pub fn with_yield_count(mut self, yield_count: usize) -> Self {
+        self.yield_count = yield_count;
+        self
+    }
+
+    pub fn max_batch_size(&self) -> usize {
+        self.max_batch_size
     }
 
     pub async fn load(&self, key: K) -> Result<V, F::Error> {

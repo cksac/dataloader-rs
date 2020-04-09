@@ -40,10 +40,6 @@ struct MyLoadFn;
 impl BatchFn<usize, usize> for MyLoadFn {
     type Error = ();
 
-    fn max_batch_size(&self) -> usize {
-        4
-    }
-
     async fn load(&self, keys: &[usize]) -> HashMap<usize, Result<usize, Self::Error>> {
         println!("BatchFn load keys {:?}", keys);
         keys.iter()
@@ -56,7 +52,7 @@ fn main() {
     let mut i = 0;
     while i < 2 {
         let a = MyLoadFn;
-        let loader = Loader::new(a);
+        let loader = Loader::new(a).with_max_batch_size(4);
 
         let l1 = loader.clone();
         let h1 = thread::spawn(move || {
