@@ -74,7 +74,7 @@ where
     state: Arc<Mutex<State<K, V, E, C>>>,
     load_fn: Arc<Mutex<F>>,
     yield_count: usize,
-    pub max_batch_size: usize,
+    max_batch_size: usize,
 }
 
 impl<K, V, E, F, C> Clone for Loader<K, V, E, F, C>
