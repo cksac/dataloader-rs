@@ -159,8 +159,12 @@ where
             state.pending.insert(request_id, key);
             if state.pending.len() >= self.max_batch_size {
                 let batch = state.pending.drain().collect::<HashMap<usize, K>>();
-                let mut keys: Vec<K> = batch.values().cloned().collect::<Vec<K>>();
-                keys.dedup();
+                let keys: Vec<K> = batch
+                    .values()
+                    .cloned()
+                    .collect::<HashSet<K>>()
+                    .into_iter()
+                    .collect();
                 let load_fn = self.load_fn.lock().await;
                 let load_ret = load_fn.load(keys.as_ref()).await;
                 drop(load_fn);
@@ -199,8 +203,12 @@ where
         if !rest.is_empty() {
             let batch = state.pending.drain().collect::<HashMap<usize, K>>();
             if !batch.is_empty() {
-                let mut keys: Vec<K> = batch.values().cloned().collect::<Vec<K>>();
-                keys.dedup();
+                let keys: Vec<K> = batch
+                    .values()
+                    .cloned()
+                    .collect::<HashSet<K>>()
+                    .into_iter()
+                    .collect();
                 let load_fn = self.load_fn.lock().await;
                 let load_ret = load_fn.load(keys.as_ref()).await;
                 drop(load_fn);
