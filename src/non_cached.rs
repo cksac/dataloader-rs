@@ -6,13 +6,13 @@ use std::hash::Hash;
 
 type RequestId = usize;
 
-struct State<K, V, E> {
-    completed: HashMap<RequestId, Result<V, E>>,
+struct State<K, V> {
+    completed: HashMap<RequestId, V>,
     pending: HashMap<RequestId, K>,
     id_seq: RequestId,
 }
 
-impl<K, V, E> State<K, V, E> {
+impl<K, V> State<K, V> {
     fn new() -> Self {
         State {
             completed: HashMap::new(),
@@ -26,25 +26,23 @@ impl<K, V, E> State<K, V, E> {
     }
 }
 
-pub struct Loader<K, V, E, F>
+pub struct Loader<K, V, F>
 where
     K: Eq + Hash + Clone,
     V: Clone,
-    E: Clone,
-    F: BatchFn<K, V, Error = E>,
+    F: BatchFn<K, V>,
 {
-    state: Arc<Mutex<State<K, V, E>>>,
+    state: Arc<Mutex<State<K, V>>>,
     load_fn: Arc<Mutex<F>>,
     yield_count: usize,
     max_batch_size: usize,
 }
 
-impl<K, V, E, F> Clone for Loader<K, V, E, F>
+impl<K, V, F> Clone for Loader<K, V, F>
 where
     K: Eq + Hash + Clone,
     V: Clone,
-    E: Clone,
-    F: BatchFn<K, V, Error = E>,
+    F: BatchFn<K, V>,
 {
     fn clone(&self) -> Self {
         Loader {
@@ -56,14 +54,13 @@ where
     }
 }
 
-impl<K, V, E, F> Loader<K, V, E, F>
+impl<K, V, F> Loader<K, V, F>
 where
     K: Eq + Hash + Clone + Debug,
     V: Clone,
-    E: Clone,
-    F: BatchFn<K, V, Error = E>,
+    F: BatchFn<K, V>,
 {
-    pub fn new(load_fn: F) -> Loader<K, V, E, F> {
+    pub fn new(load_fn: F) -> Loader<K, V, F> {
         Loader {
             state: Arc::new(Mutex::new(State::new())),
             load_fn: Arc::new(Mutex::new(load_fn)),
@@ -86,7 +83,7 @@ where
         self.max_batch_size
     }
 
-    pub async fn load(&self, key: K) -> Result<V, F::Error> {
+    pub async fn load(&self, key: K) -> V {
         let mut state = self.state.lock().await;
         let request_id = state.next_request_id();
         state.pending.insert(request_id, key);
@@ -149,7 +146,7 @@ where
         state.completed.remove(&request_id).expect("completed")
     }
 
-    pub async fn load_many(&self, keys: Vec<K>) -> HashMap<K, Result<V, F::Error>> {
+    pub async fn load_many(&self, keys: Vec<K>) -> HashMap<K, V> {
         let mut state = self.state.lock().await;
         let mut ret = HashMap::new();
         let mut requests = Vec::new();

@@ -1,6 +1,6 @@
 [package]
 name = "dataloader"
-version = "0.11.0"
+version = "0.12.0"
 edition = "2018"
 authors = ["cksac <cs.cksac@gmail.com>"]
 description = "Rust implementation of Facebook's DataLoader using async-await."
@@ -34,6 +34,6 @@ futures = "0.3"
 fake = { version = "2.2", features = ["derive"] }
 rand = "0.7"
 juniper = { git = "https://github.com/graphql-rust/juniper", branch = "async-await", features = ["async"] }
-async-graphql = "1.8.0"
+async-graphql = "1.9"
 serde_json = "1.0"
 

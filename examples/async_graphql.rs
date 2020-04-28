@@ -12,16 +12,14 @@ pub struct CultBatcher;
 
 #[async_trait]
 impl BatchFn<i32, Cult> for CultBatcher {
-    type Error = ();
-
-    async fn load(&self, keys: &[i32]) -> HashMap<i32, Result<Cult, Self::Error>> {
+    async fn load(&self, keys: &[i32]) -> HashMap<i32, Cult> {
         println!("load cult by batch {:?}", keys);
         let ret = keys
             .iter()
             .map(|k| {
                 let mut cult: Cult = Faker.fake();
                 cult.id = k.clone();
-                (k.clone(), Ok(cult))
+                (k.clone(), cult)
             })
             .collect();
         ret
@@ -30,7 +28,7 @@ impl BatchFn<i32, Cult> for CultBatcher {
 
 #[derive(Clone)]
 pub struct AppContext {
-    cult_loader: Loader<i32, Cult, (), CultBatcher>,
+    cult_loader: Loader<i32, Cult, CultBatcher>,
 }
 
 impl AppContext {
@@ -53,11 +51,7 @@ impl Query {
 
     #[field]
     async fn cult(&self, ctx: &Context<'_>, id: i32) -> Cult {
-        ctx.data::<AppContext>()
-            .cult_loader
-            .load(id)
-            .await
-            .expect("get cult")
+        ctx.data::<AppContext>().cult_loader.load(id).await
     }
 }
 
@@ -85,17 +79,12 @@ impl Person {
 
     #[field]
     async fn cult(&self, ctx: &Context<'_>) -> Cult {
-        let fut = ctx.data::<AppContext>().cult_loader.load(self.cult);
-        fut.await.expect("get cult")
+        ctx.data::<AppContext>().cult_loader.load(self.cult).await
     }
 
     #[field]
     async fn cult_by_id(&self, ctx: &Context<'_>, id: i32) -> Cult {
-        ctx.data::<AppContext>()
-            .cult_loader
-            .load(id)
-            .await
-            .expect("get cult")
+        ctx.data::<AppContext>().cult_loader.load(id).await
     }
 }
 

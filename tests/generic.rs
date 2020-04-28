@@ -9,7 +9,7 @@ struct ObjectId(usize);
 
 #[async_trait]
 trait Model {
-    async fn load_many(keys: &[ObjectId]) -> HashMap<ObjectId, Result<Option<Self>, ()>>
+    async fn load_many(keys: &[ObjectId]) -> HashMap<ObjectId, Option<Self>>
     where
         Self: Sized;
 }
@@ -19,13 +19,11 @@ struct MyModel;
 
 #[async_trait]
 impl Model for MyModel {
-    async fn load_many(keys: &[ObjectId]) -> HashMap<ObjectId, Result<Option<MyModel>, ()>>
+    async fn load_many(keys: &[ObjectId]) -> HashMap<ObjectId, Option<MyModel>>
     where
         Self: Sized,
     {
-        keys.iter()
-            .map(|k| (k.clone(), Ok(Some(MyModel))))
-            .collect()
+        keys.iter().map(|k| (k.clone(), Some(MyModel))).collect()
     }
 }
 
@@ -36,9 +34,7 @@ impl<T> BatchFn<ObjectId, Option<T>> for ModelBatcher
 where
     T: Model,
 {
-    type Error = ();
-
-    async fn load(&self, keys: &[ObjectId]) -> HashMap<ObjectId, Result<Option<T>, Self::Error>>
+    async fn load(&self, keys: &[ObjectId]) -> HashMap<ObjectId, Option<T>>
     where
         T: 'async_trait,
     {
@@ -51,6 +47,6 @@ where
 fn test_generic() {
     let loader = Loader::new(ModelBatcher);
     let f = loader.load_many(vec![ObjectId(1), ObjectId(3), ObjectId(2)]);
-    let my_model: HashMap<ObjectId, Result<Option<MyModel>, ()>> = block_on(f);
+    let my_model: HashMap<ObjectId, Option<MyModel>> = block_on(f);
     println!("{:?}", my_model);
 }

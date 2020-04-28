@@ -10,11 +10,9 @@ struct MyLoadFn;
 
 #[async_trait]
 impl BatchFn<usize, usize> for MyLoadFn {
-    type Error = ();
-
-    async fn load(&self, keys: &[usize]) -> HashMap<usize, Result<usize, Self::Error>> {
+    async fn load(&self, keys: &[usize]) -> HashMap<usize, usize> {
         keys.iter()
-            .map(|v| (v.clone(), Ok(v.clone())))
+            .map(|v| (v.clone(), v.clone()))
             .collect::<HashMap<_, _>>()
     }
 }
@@ -24,11 +22,9 @@ struct Object(usize);
 
 #[async_trait]
 impl BatchFn<usize, Object> for MyLoadFn {
-    type Error = ();
-
-    async fn load(&self, keys: &[usize]) -> HashMap<usize, Result<Object, Self::Error>> {
+    async fn load(&self, keys: &[usize]) -> HashMap<usize, Object> {
         keys.iter()
-            .map(|v| (v.clone(), Ok(Object(v.clone()))))
+            .map(|v| (v.clone(), Object(v.clone())))
             .collect::<HashMap<_, _>>()
     }
 }
@@ -38,13 +34,13 @@ fn assert_kinds() {
     fn _assert_send<T: Send>() {}
     fn _assert_sync<T: Sync>() {}
     fn _assert_clone<T: Clone>() {}
-    _assert_send::<Loader<usize, usize, (), MyLoadFn>>();
-    _assert_sync::<Loader<usize, usize, (), MyLoadFn>>();
-    _assert_clone::<Loader<usize, usize, (), MyLoadFn>>();
+    _assert_send::<Loader<usize, usize, MyLoadFn>>();
+    _assert_sync::<Loader<usize, usize, MyLoadFn>>();
+    _assert_clone::<Loader<usize, usize, MyLoadFn>>();
 
-    _assert_send::<Loader<usize, Object, (), MyLoadFn>>();
-    _assert_sync::<Loader<usize, Object, (), MyLoadFn>>();
-    _assert_clone::<Loader<usize, Object, (), MyLoadFn>>();
+    _assert_send::<Loader<usize, Object, MyLoadFn>>();
+    _assert_sync::<Loader<usize, Object, MyLoadFn>>();
+    _assert_clone::<Loader<usize, Object, MyLoadFn>>();
 }
 
 #[derive(Clone)]
@@ -54,16 +50,14 @@ struct LoadFnWithHistory {
 
 #[async_trait]
 impl BatchFn<usize, usize> for LoadFnWithHistory {
-    type Error = ();
-
-    async fn load(&self, keys: &[usize]) -> HashMap<usize, Result<usize, Self::Error>> {
+    async fn load(&self, keys: &[usize]) -> HashMap<usize, usize> {
         // println!("BatchFn load keys {:?}", keys);
         let mut max_batch_loaded = self.max_batch_loaded.lock().unwrap();
         if keys.len() > *max_batch_loaded {
             *max_batch_loaded = keys.len();
         }
         keys.iter()
-            .map(|v| (v.clone(), Ok(v.clone())))
+            .map(|v| (v.clone(), v.clone()))
             .collect::<HashMap<_, _>>()
     }
 }

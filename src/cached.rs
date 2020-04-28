@@ -7,33 +7,31 @@ use std::hash::{BuildHasher, Hash};
 pub trait Cache {
     type Key;
     type Val;
-    type Error;
-    fn get(&self, key: &Self::Key) -> Option<&Result<Self::Val, Self::Error>>;
-    fn insert(&mut self, key: Self::Key, val: Result<Self::Val, Self::Error>);
-    fn remove(&mut self, key: &Self::Key) -> Option<Result<Self::Val, Self::Error>>;
+    fn get(&self, key: &Self::Key) -> Option<&Self::Val>;
+    fn insert(&mut self, key: Self::Key, val: Self::Val);
+    fn remove(&mut self, key: &Self::Key) -> Option<Self::Val>;
     fn clear(&mut self);
 }
 
-impl<K, V, E, S: BuildHasher> Cache for HashMap<K, Result<V, E>, S>
+impl<K, V, S: BuildHasher> Cache for HashMap<K, V, S>
 where
     K: Eq + Hash,
 {
     type Key = K;
     type Val = V;
-    type Error = E;
 
     #[inline]
-    fn get(&self, key: &K) -> Option<&Result<V, E>> {
+    fn get(&self, key: &K) -> Option<&V> {
         HashMap::get(self, key)
     }
 
     #[inline]
-    fn insert(&mut self, key: K, val: Result<V, E>) {
+    fn insert(&mut self, key: K, val: V) {
         HashMap::insert(self, key, val);
     }
 
     #[inline]
-    fn remove(&mut self, key: &K) -> Option<Result<V, E>> {
+    fn remove(&mut self, key: &K) -> Option<V> {
         HashMap::remove(self, key)
     }
 
@@ -43,17 +41,17 @@ where
     }
 }
 
-struct State<K, V, E, C = HashMap<K, Result<V, E>>>
+struct State<K, V, C = HashMap<K, V>>
 where
-    C: Cache<Key = K, Val = V, Error = E>,
+    C: Cache<Key = K, Val = V>,
 {
     completed: C,
     pending: HashSet<K>,
 }
 
-impl<K: Eq + Hash, V, E, C> State<K, V, E, C>
+impl<K: Eq + Hash, V, C> State<K, V, C>
 where
-    C: Cache<Key = K, Val = V, Error = E>,
+    C: Cache<Key = K, Val = V>,
 {
     fn with_cache(cache: C) -> Self {
         State {
@@ -63,27 +61,25 @@ where
     }
 }
 
-pub struct Loader<K, V, E, F, C = HashMap<K, Result<V, E>>>
+pub struct Loader<K, V, F, C = HashMap<K, V>>
 where
     K: Eq + Hash + Clone,
     V: Clone,
-    E: Clone,
-    F: BatchFn<K, V, Error = E>,
-    C: Cache<Key = K, Val = V, Error = E>,
+    F: BatchFn<K, V>,
+    C: Cache<Key = K, Val = V>,
 {
-    state: Arc<Mutex<State<K, V, E, C>>>,
+    state: Arc<Mutex<State<K, V, C>>>,
     load_fn: Arc<Mutex<F>>,
     yield_count: usize,
     max_batch_size: usize,
 }
 
-impl<K, V, E, F, C> Clone for Loader<K, V, E, F, C>
+impl<K, V, F, C> Clone for Loader<K, V, F, C>
 where
     K: Eq + Hash + Clone,
     V: Clone,
-    E: Clone,
-    F: BatchFn<K, V, Error = E>,
-    C: Cache<Key = K, Val = V, Error = E>,
+    F: BatchFn<K, V>,
+    C: Cache<Key = K, Val = V>,
 {
     fn clone(&self) -> Self {
         Loader {
@@ -96,27 +92,25 @@ where
 }
 
 #[allow(clippy::implicit_hasher)]
-impl<K, V, E, F> Loader<K, V, E, F, HashMap<K, Result<V, E>>>
+impl<K, V, F> Loader<K, V, F, HashMap<K, V>>
 where
     K: Eq + Hash + Clone + Debug,
     V: Clone,
-    E: Clone,
-    F: BatchFn<K, V, Error = E>,
+    F: BatchFn<K, V>,
 {
-    pub fn new(load_fn: F) -> Loader<K, V, E, F, HashMap<K, Result<V, E>>> {
+    pub fn new(load_fn: F) -> Loader<K, V, F, HashMap<K, V>> {
         Loader::with_cache(load_fn, HashMap::new())
     }
 }
 
-impl<K, V, E, F, C> Loader<K, V, E, F, C>
+impl<K, V, F, C> Loader<K, V, F, C>
 where
     K: Eq + Hash + Clone + Debug,
     V: Clone,
-    E: Clone,
-    F: BatchFn<K, V, Error = E>,
-    C: Cache<Key = K, Val = V, Error = E>,
+    F: BatchFn<K, V>,
+    C: Cache<Key = K, Val = V>,
 {
-    pub fn with_cache(load_fn: F, cache: C) -> Loader<K, V, E, F, C> {
+    pub fn with_cache(load_fn: F, cache: C) -> Loader<K, V, F, C> {
         Loader {
             state: Arc::new(Mutex::new(State::with_cache(cache))),
             load_fn: Arc::new(Mutex::new(load_fn)),
@@ -139,7 +133,7 @@ where
         self.max_batch_size
     }
 
-    pub async fn load(&self, key: K) -> Result<V, F::Error> {
+    pub async fn load(&self, key: K) -> V {
         let mut state = self.state.lock().await;
         if let Some(v) = state.completed.get(&key) {
             return (*v).clone();
@@ -193,7 +187,7 @@ where
             .unwrap_or_else(|| panic!("found key {:?} in load result", key))
     }
 
-    pub async fn load_many(&self, keys: Vec<K>) -> HashMap<K, Result<V, F::Error>> {
+    pub async fn load_many(&self, keys: Vec<K>) -> HashMap<K, V> {
         let mut state = self.state.lock().await;
         let mut ret = HashMap::new();
         let mut rest = Vec::new();
@@ -252,7 +246,7 @@ where
 
     pub async fn prime(&self, key: K, val: V) {
         let mut state = self.state.lock().await;
-        state.completed.insert(key, Ok(val));
+        state.completed.insert(key, val);
     }
 
     pub async fn clear(&self, key: K) {
