@@ -1,6 +1,6 @@
 # Dataloader
 
-[![Build Status](https://travis-ci.org/cksac/dataloader-rs.svg?branch=master)](https://travis-ci.org/cksac/dataloader-rs)
+![build](https://github.com/cksac/dataloader-rs/workflows/Rust/badge.svg)
 [![Crates.io](https://img.shields.io/crates/v/dataloader.svg)](https://crates.io/crates/dataloader)
 
 Rust implementation of [Facebook's DataLoader](https://github.com/facebook/dataloader) using async-await.
