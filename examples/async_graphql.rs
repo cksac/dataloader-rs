@@ -43,15 +43,16 @@ struct Query;
 
 #[async_graphql::Object]
 impl Query {
-    #[field]
     async fn persons(&self, _ctx: &Context<'_>) -> Vec<Person> {
         let persons = fake::vec![Person; 10..20];
         persons
     }
 
-    #[field]
     async fn cult(&self, ctx: &Context<'_>, id: i32) -> Cult {
-        ctx.data::<AppContext>().cult_loader.load(id).await
+        ctx.data_unchecked::<AppContext>()
+            .cult_loader
+            .load(id)
+            .await
     }
 }
 
@@ -67,24 +68,26 @@ pub struct Person {
 
 #[async_graphql::Object]
 impl Person {
-    #[field]
     async fn id(&self) -> i32 {
         self.id
     }
 
-    #[field]
     async fn name(&self) -> &str {
         self.name.as_str()
     }
 
-    #[field]
     async fn cult(&self, ctx: &Context<'_>) -> Cult {
-        ctx.data::<AppContext>().cult_loader.load(self.cult).await
+        ctx.data_unchecked::<AppContext>()
+            .cult_loader
+            .load(self.cult)
+            .await
     }
 
-    #[field]
     async fn cult_by_id(&self, ctx: &Context<'_>, id: i32) -> Cult {
-        ctx.data::<AppContext>().cult_loader.load(id).await
+        ctx.data_unchecked::<AppContext>()
+            .cult_loader
+            .load(id)
+            .await
     }
 }
 
@@ -98,12 +101,10 @@ pub struct Cult {
 
 #[async_graphql::Object]
 impl Cult {
-    #[field]
     async fn id(&self) -> i32 {
         self.id
     }
 
-    #[field]
     async fn name(&self) -> &str {
         self.name.as_str()
     }
@@ -148,6 +149,6 @@ fn main() {
               }
             }
         }"#;
-    let f = schema.execute(&q);
-    let _r = block_on(f).unwrap();
+    let f = schema.execute(q);
+    let _r = block_on(f);
 }

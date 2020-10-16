@@ -5,8 +5,7 @@ use fake::faker::company::en::CompanyName;
 use fake::faker::name::en::Name;
 use fake::{Dummy, Fake, Faker};
 use futures::executor::block_on;
-use juniper;
-use juniper::{EmptyMutation, FieldResult, Variables};
+use juniper::{self, EmptyMutation, EmptySubscription, FieldResult, Variables};
 use std::collections::HashMap;
 
 pub struct CultBatcher;
@@ -56,7 +55,8 @@ impl Query {
     }
 }
 
-type Schema = juniper::RootNode<'static, Query, EmptyMutation<AppContext>>;
+type Schema =
+    juniper::RootNode<'static, Query, EmptyMutation<AppContext>, EmptySubscription<AppContext>>;
 
 #[derive(Debug, Clone, Dummy)]
 pub struct Person {
@@ -109,7 +109,7 @@ impl Cult {
 
 fn main() {
     let ctx = AppContext::new();
-    let schema = Schema::new(Query, EmptyMutation::new());
+    let schema = Schema::new(Query, EmptyMutation::new(), EmptySubscription::new());
     let vars = Variables::new();
     let q = r#"
         query {
@@ -146,6 +146,6 @@ fn main() {
               }
             }
         }"#;
-    let f = juniper::execute_async(q, None, &schema, &vars, &ctx);
+    let f = juniper::execute(q, None, &schema, &vars, &ctx);
     let (_res, _errors) = block_on(f).unwrap();
 }
