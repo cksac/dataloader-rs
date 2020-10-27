@@ -14,15 +14,15 @@ Rust implementation of [Facebook's DataLoader](https://github.com/facebook/datal
 ## Usage
 ### Switching runtime, by using cargo features
 - `runtime-async-std` (default), to use the [async-std](https://async.rs) runtime
-    - dataloader = "0.12"
+    - dataloader = "0.13"
 - `runtime-tokio` to use the [Tokio](https://tokio.rs) runtime
-    - dataloader = { version = "0.12", default-features = false, features = ["runtime-tokio"]}
+    - dataloader = { version = "0.13", default-features = false, features = ["runtime-tokio"]}
 
 
 ### Add to your `Cargo.toml`:
 ```toml
 [dependencies]
-dataloader = "0.12"
+dataloader = "0.13"
 futures = "0.3"
 async-trait = "0.1"
 ```
@@ -40,7 +40,7 @@ struct MyLoadFn;
 
 #[async_trait]
 impl BatchFn<usize, usize> for MyLoadFn {
-    async fn load(&self, keys: &[usize]) -> HashMap<usize, usize> {
+    async fn load(&mut self, keys: &[usize]) -> HashMap<usize, usize> {
         println!("BatchFn load keys {:?}", keys);
         keys.iter()
             .map(|v| (v.clone(), v.clone()))
