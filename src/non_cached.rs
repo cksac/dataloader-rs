@@ -95,7 +95,7 @@ where
                 .collect::<HashSet<K>>()
                 .into_iter()
                 .collect();
-            let load_fn = self.load_fn.lock().await;
+            let mut load_fn = self.load_fn.lock().await;
             let load_ret = load_fn.load(keys.as_ref()).await;
             drop(load_fn);
             for (request_id, key) in batch.into_iter() {
@@ -129,7 +129,7 @@ where
                     .collect::<HashSet<K>>()
                     .into_iter()
                     .collect();
-                let load_fn = self.load_fn.lock().await;
+                let mut load_fn = self.load_fn.lock().await;
                 let load_ret = load_fn.load(keys.as_ref()).await;
                 drop(load_fn);
                 for (request_id, key) in batch.into_iter() {
@@ -162,7 +162,7 @@ where
                     .collect::<HashSet<K>>()
                     .into_iter()
                     .collect();
-                let load_fn = self.load_fn.lock().await;
+                let mut load_fn = self.load_fn.lock().await;
                 let load_ret = load_fn.load(keys.as_ref()).await;
                 drop(load_fn);
                 for (request_id, key) in batch.into_iter() {
@@ -206,7 +206,7 @@ where
                     .collect::<HashSet<K>>()
                     .into_iter()
                     .collect();
-                let load_fn = self.load_fn.lock().await;
+                let mut load_fn = self.load_fn.lock().await;
                 let load_ret = load_fn.load(keys.as_ref()).await;
                 drop(load_fn);
                 for (request_id, key) in batch.into_iter() {

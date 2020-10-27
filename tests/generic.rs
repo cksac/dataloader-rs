@@ -34,7 +34,7 @@ impl<T> BatchFn<ObjectId, Option<T>> for ModelBatcher
 where
     T: Model,
 {
-    async fn load(&self, keys: &[ObjectId]) -> HashMap<ObjectId, Option<T>>
+    async fn load(&mut self, keys: &[ObjectId]) -> HashMap<ObjectId, Option<T>>
     where
         T: 'async_trait,
     {

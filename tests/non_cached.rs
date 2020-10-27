@@ -10,7 +10,7 @@ struct MyLoadFn;
 
 #[async_trait]
 impl BatchFn<usize, usize> for MyLoadFn {
-    async fn load(&self, keys: &[usize]) -> HashMap<usize, usize> {
+    async fn load(&mut self, keys: &[usize]) -> HashMap<usize, usize> {
         keys.iter()
             .map(|v| (v.clone(), v.clone()))
             .collect::<HashMap<_, _>>()
@@ -22,7 +22,7 @@ struct Object(usize);
 
 #[async_trait]
 impl BatchFn<usize, Object> for MyLoadFn {
-    async fn load(&self, keys: &[usize]) -> HashMap<usize, Object> {
+    async fn load(&mut self, keys: &[usize]) -> HashMap<usize, Object> {
         keys.iter()
             .map(|v| (v.clone(), Object(v.clone())))
             .collect::<HashMap<_, _>>()
@@ -50,7 +50,7 @@ struct LoadFnWithHistory {
 
 #[async_trait]
 impl BatchFn<usize, usize> for LoadFnWithHistory {
-    async fn load(&self, keys: &[usize]) -> HashMap<usize, usize> {
+    async fn load(&mut self, keys: &[usize]) -> HashMap<usize, usize> {
         // println!("BatchFn load keys {:?}", keys);
         let mut max_batch_loaded = self.max_batch_loaded.lock().unwrap();
         if keys.len() > *max_batch_loaded {
