@@ -143,7 +143,7 @@ where
             state.pending.insert(key.clone());
             if state.pending.len() >= self.max_batch_size {
                 let keys = state.pending.drain().collect::<Vec<K>>();
-                let load_fn = self.load_fn.lock().await;
+                let mut load_fn = self.load_fn.lock().await;
                 let load_ret = load_fn.load(keys.as_ref()).await;
                 drop(load_fn);
                 for (k, v) in load_ret.into_iter() {
@@ -172,7 +172,7 @@ where
 
         if !state.pending.is_empty() {
             let keys = state.pending.drain().collect::<Vec<K>>();
-            let load_fn = self.load_fn.lock().await;
+            let mut load_fn = self.load_fn.lock().await;
             let load_ret = load_fn.load(keys.as_ref()).await;
             drop(load_fn);
             for (k, v) in load_ret.into_iter() {
@@ -200,7 +200,7 @@ where
                 state.pending.insert(key.clone());
                 if state.pending.len() >= self.max_batch_size {
                     let keys = state.pending.drain().collect::<Vec<K>>();
-                    let load_fn = self.load_fn.lock().await;
+                    let mut load_fn = self.load_fn.lock().await;
                     let load_ret = load_fn.load(keys.as_ref()).await;
                     drop(load_fn);
                     for (k, v) in load_ret.into_iter() {
@@ -223,7 +223,7 @@ where
             let mut state = self.state.lock().await;
             if !state.pending.is_empty() {
                 let keys = state.pending.drain().collect::<Vec<K>>();
-                let load_fn = self.load_fn.lock().await;
+                let mut load_fn = self.load_fn.lock().await;
                 let load_ret = load_fn.load(keys.as_ref()).await;
                 drop(load_fn);
                 for (k, v) in load_ret.into_iter() {

@@ -12,7 +12,7 @@ pub struct CultBatcher;
 
 #[async_trait]
 impl BatchFn<i32, Cult> for CultBatcher {
-    async fn load(&self, keys: &[i32]) -> HashMap<i32, Cult> {
+    async fn load(&mut self, keys: &[i32]) -> HashMap<i32, Cult> {
         println!("load cult by batch {:?}", keys);
         let ret = keys
             .iter()

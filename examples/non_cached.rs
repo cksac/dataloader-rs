@@ -9,7 +9,7 @@ struct MyLoadFn;
 
 #[async_trait]
 impl BatchFn<usize, usize> for MyLoadFn {
-    async fn load(&self, keys: &[usize]) -> HashMap<usize, usize> {
+    async fn load(&mut self, keys: &[usize]) -> HashMap<usize, usize> {
         println!("BatchFn load keys {:?}", keys);
         keys.iter()
             .map(|v| (v.clone(), v.clone()))
