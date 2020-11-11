@@ -17,3 +17,6 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
+    - name: Run tests tokio
+      run: cargo test --verbose --features runtime-tokio --no-default-features
+
