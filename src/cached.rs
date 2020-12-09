@@ -3,6 +3,7 @@ use crate::BatchFn;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::{BuildHasher, Hash};
+use std::iter::IntoIterator;
 
 pub trait Cache {
     type Key;
@@ -247,6 +248,13 @@ where
     pub async fn prime(&self, key: K, val: V) {
         let mut state = self.state.lock().await;
         state.completed.insert(key, val);
+    }
+
+    pub async fn prime_many(&self, values: impl IntoIterator<Item = (K, V)>) {
+        let mut state = self.state.lock().await;
+        for (k, v) in values.into_iter() {
+            state.completed.insert(k, v);
+        }
     }
 
     pub async fn clear(&self, key: K) {
