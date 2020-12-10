@@ -156,6 +156,7 @@ fn test_load_many() {
             max_batch_loaded: Arc::new(Mutex::new(0)),
         };
         let loader = Loader::new(load_fn.clone()).with_max_batch_size(4);
+
         let r = loader.load_many(vec![2, 3, 4, 5, 6, 7, 8]);
         let _fv = block_on(r);
         i += 1;
