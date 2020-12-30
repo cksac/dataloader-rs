@@ -31,8 +31,8 @@ tokio = { version = "0.3", features = [ "sync", "rt" ], optional = true }
 
 [dev-dependencies]
 futures = "0.3"
-fake = { version = "2.2", features = ["derive"] }
-rand = "0.7"
+fake = { version = "2.4", features = ["derive"] }
+rand = "0.8"
 juniper = "0.15.0"
 async-graphql = { version = "2.1.7", default-features = false }
 serde_json = "1.0"
