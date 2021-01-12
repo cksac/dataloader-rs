@@ -14,15 +14,15 @@ Rust implementation of [Facebook's DataLoader](https://github.com/facebook/datal
 ## Usage
 ### Switching runtime, by using cargo features
 - `runtime-async-std` (default), to use the [async-std](https://async.rs) runtime
-    - dataloader = "0.13"
+    - dataloader = "0.14"
 - `runtime-tokio` to use the [Tokio](https://tokio.rs) runtime
-    - dataloader = { version = "0.13", default-features = false, features = ["runtime-tokio"]}
+    - dataloader = { version = "0.14", default-features = false, features = ["runtime-tokio"]}
 
 
 ### Add to your `Cargo.toml`:
 ```toml
 [dependencies]
-dataloader = "0.13"
+dataloader = "0.14"
 futures = "0.3"
 async-trait = "0.1"
 ```
