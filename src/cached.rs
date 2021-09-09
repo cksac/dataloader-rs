@@ -8,7 +8,7 @@ use std::iter::IntoIterator;
 pub trait Cache {
     type Key;
     type Val;
-    fn get(&self, key: &Self::Key) -> Option<&Self::Val>;
+    fn get(&mut self, key: &Self::Key) -> Option<&Self::Val>;
     fn insert(&mut self, key: Self::Key, val: Self::Val);
     fn remove(&mut self, key: &Self::Key) -> Option<Self::Val>;
     fn clear(&mut self);
@@ -22,7 +22,7 @@ where
     type Val = V;
 
     #[inline]
-    fn get(&self, key: &K) -> Option<&V> {
+    fn get(&mut self, key: &K) -> Option<&V> {
         HashMap::get(self, key)
     }
 
