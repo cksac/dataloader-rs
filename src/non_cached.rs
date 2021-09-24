@@ -3,6 +3,7 @@ use crate::BatchFn;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::io::{ErrorKind, Error};
 
 type RequestId = usize;
 
@@ -27,10 +28,10 @@ impl<K, V> State<K, V> {
 }
 
 pub struct Loader<K, V, F>
-where
-    K: Eq + Hash + Clone,
-    V: Clone,
-    F: BatchFn<K, V>,
+    where
+        K: Eq + Hash + Clone,
+        V: Clone,
+        F: BatchFn<K, V>,
 {
     state: Arc<Mutex<State<K, V>>>,
     load_fn: Arc<Mutex<F>>,
@@ -39,10 +40,10 @@ where
 }
 
 impl<K, V, F> Clone for Loader<K, V, F>
-where
-    K: Eq + Hash + Clone,
-    V: Clone,
-    F: BatchFn<K, V>,
+    where
+        K: Eq + Hash + Clone,
+        V: Clone,
+        F: BatchFn<K, V>,
 {
     fn clone(&self) -> Self {
         Loader {
@@ -55,10 +56,10 @@ where
 }
 
 impl<K, V, F> Loader<K, V, F>
-where
-    K: Eq + Hash + Clone + Debug,
-    V: Clone,
-    F: BatchFn<K, V>,
+    where
+        K: Eq + Hash + Clone + Debug,
+        V: Clone,
+        F: BatchFn<K, V>,
 {
     pub fn new(load_fn: F) -> Loader<K, V, F> {
         Loader {
@@ -83,7 +84,7 @@ where
         self.max_batch_size
     }
 
-    pub async fn load(&self, key: K) -> V {
+    pub async fn load_safe(&self, key: K) -> Result<V, Error> {
         let mut state = self.state.lock().await;
         let request_id = state.next_request_id();
         state.pending.insert(request_id, key);
@@ -103,11 +104,11 @@ where
                     request_id,
                     load_ret
                         .get(&key)
-                        .unwrap_or_else(|| panic!("found key {:?} in load result", key))
+                        .ok_or(Error::new(ErrorKind::NotFound, format!("could not lookup result for given key: {:?}", key)))?
                         .clone(),
                 );
             }
-            return state.completed.remove(&request_id).expect("completed");
+            return Ok(state.completed.remove(&request_id).expect("completed"));
         }
         drop(state);
 
@@ -137,16 +138,24 @@ where
                         request_id,
                         load_ret
                             .get(&key)
-                            .unwrap_or_else(|| panic!("found key {:?} in load result", key))
+                            .ok_or(Error::new(ErrorKind::NotFound, format!("could not lookup result for given key: {:?}", key)))?
                             .clone(),
                     );
                 }
             }
         }
-        state.completed.remove(&request_id).expect("completed")
+        Ok(state.completed.remove(&request_id).expect("completed"))
+    }
+
+    pub async fn load(&self, key: K) -> V {
+        self.load_safe(key).await.unwrap_or_else(|e| panic!("{}", e))
     }
 
     pub async fn load_many(&self, keys: Vec<K>) -> HashMap<K, V> {
+        self.load_many_safe(keys).await.unwrap_or_else(|e| panic!("{}", e))
+    }
+
+    pub async fn load_many_safe(&self, keys: Vec<K>) -> Result<HashMap<K, V>, Error> {
         let mut state = self.state.lock().await;
         let mut ret = HashMap::new();
         let mut requests = Vec::new();
@@ -170,7 +179,7 @@ where
                         request_id,
                         load_ret
                             .get(&key)
-                            .unwrap_or_else(|| panic!("found key {:?} in load result", key))
+                            .ok_or(Error::new(ErrorKind::NotFound, format!("could not lookup result for given key: {:?}", key)))?
                             .clone(),
                     );
                 }
@@ -214,7 +223,7 @@ where
                         request_id,
                         load_ret
                             .get(&key)
-                            .unwrap_or_else(|| panic!("found key {:?} in load result", key))
+                            .ok_or(Error::new(ErrorKind::NotFound, format!("could not lookup result for given key: {:?}", key)))?
                             .clone(),
                     );
                 }
@@ -223,11 +232,12 @@ where
                 let v = state
                     .completed
                     .remove(&request_id)
-                    .unwrap_or_else(|| panic!("found key {:?} in load result", key));
+                    .ok_or(Error::new(ErrorKind::NotFound, format!("could not lookup result for given key: {:?}", key)))?;
+
                 ret.insert(key, v);
             }
         }
 
-        ret
+        Ok(ret)
     }
 }
