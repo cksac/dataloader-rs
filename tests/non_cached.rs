@@ -4,7 +4,7 @@ use dataloader::BatchFn;
 use futures::executor::block_on;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::{thread, panic};
 
 struct MyLoadFn;
 
@@ -59,6 +59,16 @@ impl BatchFn<usize, usize> for LoadFnWithHistory {
         keys.iter()
             .map(|v| (v.clone(), v.clone()))
             .collect::<HashMap<_, _>>()
+    }
+}
+
+#[derive(Clone)]
+struct LoadFnForEmptyTest;
+
+#[async_trait]
+impl BatchFn<usize, usize> for LoadFnForEmptyTest {
+    async fn load(&mut self, _keys: &[usize]) -> HashMap<usize, usize> {
+        HashMap::new()
     }
 }
 
@@ -132,6 +142,37 @@ fn test_load() {
             max_batch_size
         );
     }
+}
+
+#[test]
+#[should_panic(expected = "could not lookup result for given key: 1337")]
+fn test_load_unresolved_key() {
+    let load_fn = LoadFnForEmptyTest;
+    let loader = Loader::new(load_fn.clone()).with_max_batch_size(4);
+
+    let h1 = thread::spawn(move || {
+        let r1 = loader.load(1337);
+        block_on(r1);
+    });
+
+    let _ = h1.join().map_err(|e| {
+        panic::resume_unwind(e)
+    });
+}
+
+#[test]
+fn test_load_safe_unresolved_key() {
+    let load_fn = LoadFnForEmptyTest;
+    let loader = Loader::new(load_fn.clone()).with_max_batch_size(4);
+
+    let h1 = thread::spawn(move || {
+        let r1 = loader.try_load(1337);
+        let fv = block_on(r1);
+
+        assert!(fv.is_err())
+    });
+
+    let _ = h1.join().unwrap();
 }
 
 #[test]
