@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::{BuildHasher, Hash};
 use std::iter::IntoIterator;
+use std::io::{Error, ErrorKind};
 
 pub trait Cache {
     type Key;
@@ -134,10 +135,10 @@ where
         self.max_batch_size
     }
 
-    pub async fn load(&self, key: K) -> V {
+    pub async fn load_safe(&self, key: K) -> Result<V, Error> {
         let mut state = self.state.lock().await;
         if let Some(v) = state.completed.get(&key) {
-            return (*v).clone();
+            return Ok((*v).clone());
         }
 
         if state.pending.get(&key).is_none() {
@@ -154,7 +155,7 @@ where
                     .completed
                     .get(&key)
                     .cloned()
-                    .unwrap_or_else(|| panic!("found key {:?} in load result", key));
+                    .ok_or(Error::new(ErrorKind::NotFound, format!("could not lookup result for given key: {:?}", key)));
             }
         }
         drop(state);
@@ -168,7 +169,7 @@ where
 
         let mut state = self.state.lock().await;
         if let Some(v) = state.completed.get(&key) {
-            return (*v).clone();
+            return Ok((*v).clone());
         }
 
         if !state.pending.is_empty() {
@@ -185,7 +186,11 @@ where
             .completed
             .get(&key)
             .cloned()
-            .unwrap_or_else(|| panic!("found key {:?} in load result", key))
+            .ok_or(Error::new(ErrorKind::NotFound, format!("could not lookup result for given key: {:?}", key)))
+    }
+
+    pub async fn load(&self, key: K) -> V {
+        self.load_safe(key).await.unwrap_or_else(|e| panic!("{}", e))
     }
 
     pub async fn load_many(&self, keys: Vec<K>) -> HashMap<K, V> {
@@ -237,7 +242,7 @@ where
                     .completed
                     .get(&key)
                     .cloned()
-                    .unwrap_or_else(|| panic!("found key {:?} in load result", key));
+                    .unwrap_or_else(|| panic!("could not lookup result for given key: {:?}", key));
                 ret.insert(key, v);
             }
         }
