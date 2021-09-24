@@ -135,7 +135,7 @@ where
         self.max_batch_size
     }
 
-    pub async fn load_safe(&self, key: K) -> Result<V, Error> {
+    pub async fn try_load(&self, key: K) -> Result<V, Error> {
         let mut state = self.state.lock().await;
         if let Some(v) = state.completed.get(&key) {
             return Ok((*v).clone());
@@ -190,10 +190,10 @@ where
     }
 
     pub async fn load(&self, key: K) -> V {
-        self.load_safe(key).await.unwrap_or_else(|e| panic!("{}", e))
+        self.try_load(key).await.unwrap_or_else(|e| panic!("{}", e))
     }
 
-    pub async fn load_many(&self, keys: Vec<K>) -> HashMap<K, V> {
+    pub async fn try_load_many(&self, keys: Vec<K>) -> Result<HashMap<K, V>, Error> {
         let mut state = self.state.lock().await;
         let mut ret = HashMap::new();
         let mut rest = Vec::new();
@@ -242,12 +242,17 @@ where
                     .completed
                     .get(&key)
                     .cloned()
-                    .unwrap_or_else(|| panic!("could not lookup result for given key: {:?}", key));
+                    .ok_or(Error::new(ErrorKind::NotFound, format!("could not lookup result for given key: {:?}", key)))?;
+
                 ret.insert(key, v);
             }
         }
 
-        ret
+        Ok(ret)
+    }
+
+    pub async fn load_many(&self, keys: Vec<K>) -> HashMap<K, V> {
+        self.try_load_many(keys).await.unwrap_or_else(|e| panic!("{}", e))
     }
 
     pub async fn prime(&self, key: K, val: V) {

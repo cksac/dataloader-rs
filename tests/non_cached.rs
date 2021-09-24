@@ -166,7 +166,7 @@ fn test_load_safe_unresolved_key() {
     let loader = Loader::new(load_fn.clone()).with_max_batch_size(4);
 
     let h1 = thread::spawn(move || {
-        let r1 = loader.load_safe(1337);
+        let r1 = loader.try_load(1337);
         let fv = block_on(r1);
 
         assert!(fv.is_err())

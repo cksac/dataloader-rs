@@ -84,7 +84,7 @@ impl<K, V, F> Loader<K, V, F>
         self.max_batch_size
     }
 
-    pub async fn load_safe(&self, key: K) -> Result<V, Error> {
+    pub async fn try_load(&self, key: K) -> Result<V, Error> {
         let mut state = self.state.lock().await;
         let request_id = state.next_request_id();
         state.pending.insert(request_id, key);
@@ -148,14 +148,14 @@ impl<K, V, F> Loader<K, V, F>
     }
 
     pub async fn load(&self, key: K) -> V {
-        self.load_safe(key).await.unwrap_or_else(|e| panic!("{}", e))
+        self.try_load(key).await.unwrap_or_else(|e| panic!("{}", e))
     }
 
     pub async fn load_many(&self, keys: Vec<K>) -> HashMap<K, V> {
-        self.load_many_safe(keys).await.unwrap_or_else(|e| panic!("{}", e))
+        self.try_load_many(keys).await.unwrap_or_else(|e| panic!("{}", e))
     }
 
-    pub async fn load_many_safe(&self, keys: Vec<K>) -> Result<HashMap<K, V>, Error> {
+    pub async fn try_load_many(&self, keys: Vec<K>) -> Result<HashMap<K, V>, Error> {
         let mut state = self.state.lock().await;
         let mut ret = HashMap::new();
         let mut requests = Vec::new();
