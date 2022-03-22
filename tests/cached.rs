@@ -174,7 +174,7 @@ fn test_load_unresolved_key() {
 }
 
 #[test]
-fn test_load_safe_unresolved_key() {
+fn test_try_load_unresolved_key() {
     let load_fn = LoadFnForEmptyTest;
     let loader = Loader::new(load_fn.clone()).with_max_batch_size(4);
 
