@@ -189,6 +189,43 @@ fn test_try_load_unresolved_key() {
 }
 
 #[test]
+fn test_try_load_unresolved_key_from_multiple_requests() {
+    let load_fn = LoadFnForEmptyTest;
+    let loader = Loader::new(load_fn.clone()).with_max_batch_size(4);
+
+    let h1 = thread::spawn(move || {
+        let r1 = loader.try_load(1337);
+        let r2 = loader.try_load(1338);
+        let (f1, f2) = block_on(futures::future::join(r1, r2));
+
+        assert!(f1.is_err());
+        assert!(f2.is_err());
+    });
+
+    let _ = h1.join().unwrap();
+}
+
+#[test]
+fn test_try_load_unresolved_key_from_multiple_requests_beyond_max_batch_size() {
+    let load_fn = LoadFnForEmptyTest;
+    let loader = Loader::new(load_fn.clone()).with_max_batch_size(2);
+
+    let l1 = loader.clone();
+    let h1 = thread::spawn(move || {
+        let r1 = l1.try_load(1337);
+        let r2 = l1.try_load(1338);
+        let r3 = l1.try_load(1339);
+
+        let (f1, f2, f3) = block_on(futures::future::join3(r1, r2, r3));
+        assert!(f1.is_err());
+        assert!(f2.is_err());
+        assert!(f3.is_err());
+    });
+
+    let _ = h1.join().unwrap();
+}
+
+#[test]
 fn test_load_many() {
     let mut i = 0;
     while i < 10 {

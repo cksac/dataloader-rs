@@ -9,6 +9,7 @@ type RequestId = usize;
 
 struct State<K, V> {
     completed: HashMap<RequestId, V>,
+    failed: HashMap<RequestId, K>,
     pending: HashMap<RequestId, K>,
     id_seq: RequestId,
 }
@@ -17,6 +18,7 @@ impl<K, V> State<K, V> {
     fn new() -> Self {
         State {
             completed: HashMap::new(),
+            failed: HashMap::new(),
             pending: HashMap::new(),
             id_seq: 0,
         }
@@ -100,15 +102,22 @@ impl<K, V, F> Loader<K, V, F>
             let load_ret = load_fn.load(keys.as_ref()).await;
             drop(load_fn);
             for (request_id, key) in batch.into_iter() {
-                state.completed.insert(
-                    request_id,
-                    load_ret
-                        .get(&key)
-                        .ok_or(Error::new(ErrorKind::NotFound, format!("could not lookup result for given key: {:?}", key)))?
-                        .clone(),
-                );
+                if load_ret
+                    .get(&key)
+                    .and_then(|v| state.completed.insert(request_id, v.clone()))
+                    .is_none() {
+                    state.failed.insert(request_id, key);
+                }
             }
-            return Ok(state.completed.remove(&request_id).expect("completed"));
+            return state.completed.remove(&request_id).ok_or_else(|| {
+                Error::new(
+                    ErrorKind::NotFound,
+                    format!(
+                        "could not lookup result for given key: {:?}",
+                        state.failed.remove(&request_id).expect("failed")
+                    ),
+                )
+            });
         }
         drop(state);
 
@@ -134,17 +143,24 @@ impl<K, V, F> Loader<K, V, F>
                 let load_ret = load_fn.load(keys.as_ref()).await;
                 drop(load_fn);
                 for (request_id, key) in batch.into_iter() {
-                    state.completed.insert(
-                        request_id,
-                        load_ret
-                            .get(&key)
-                            .ok_or(Error::new(ErrorKind::NotFound, format!("could not lookup result for given key: {:?}", key)))?
-                            .clone(),
-                    );
+                    if load_ret
+                        .get(&key)
+                        .and_then(|v| state.completed.insert(request_id, v.clone()))
+                        .is_none() {
+                        state.failed.insert(request_id, key);
+                    }
                 }
             }
         }
-        Ok(state.completed.remove(&request_id).expect("completed"))
+        state.completed.remove(&request_id).ok_or_else(|| {
+            Error::new(
+                ErrorKind::NotFound,
+                format!(
+                    "could not lookup result for given key: {:?}",
+                    state.failed.remove(&request_id).expect("failed")
+                ),
+            )
+        })
     }
 
     pub async fn load(&self, key: K) -> V {
@@ -175,13 +191,12 @@ impl<K, V, F> Loader<K, V, F>
                 let load_ret = load_fn.load(keys.as_ref()).await;
                 drop(load_fn);
                 for (request_id, key) in batch.into_iter() {
-                    state.completed.insert(
-                        request_id,
-                        load_ret
-                            .get(&key)
-                            .ok_or(Error::new(ErrorKind::NotFound, format!("could not lookup result for given key: {:?}", key)))?
-                            .clone(),
-                    );
+                    if load_ret
+                        .get(&key)
+                        .and_then(|v| state.completed.insert(request_id, v.clone()))
+                        .is_none() {
+                        state.failed.insert(request_id, key);
+                    }
                 }
             }
         }
@@ -219,20 +234,24 @@ impl<K, V, F> Loader<K, V, F>
                 let load_ret = load_fn.load(keys.as_ref()).await;
                 drop(load_fn);
                 for (request_id, key) in batch.into_iter() {
-                    state.completed.insert(
-                        request_id,
-                        load_ret
-                            .get(&key)
-                            .ok_or(Error::new(ErrorKind::NotFound, format!("could not lookup result for given key: {:?}", key)))?
-                            .clone(),
-                    );
+                    if load_ret
+                        .get(&key)
+                        .and_then(|v| state.completed.insert(request_id, v.clone()))
+                        .is_none() {
+                        state.failed.insert(request_id, key);
+                    }
                 }
             }
             for (request_id, key) in rest.into_iter() {
-                let v = state
-                    .completed
-                    .remove(&request_id)
-                    .ok_or(Error::new(ErrorKind::NotFound, format!("could not lookup result for given key: {:?}", key)))?;
+                let v = state.completed.remove(&request_id).ok_or_else(|| {
+                    Error::new(
+                        ErrorKind::NotFound,
+                        format!(
+                            "could not lookup result for given key: {:?}",
+                            state.failed.remove(&request_id).expect("failed")
+                        ),
+                    )
+                })?;
 
                 ret.insert(key, v);
             }
