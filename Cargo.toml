@@ -1,6 +1,6 @@
 [package]
 name = "dataloader"
-version = "0.15.0"
+version = "0.15.1"
 edition = "2018"
 authors = ["cksac <cs.cksac@gmail.com>"]
 description = "Rust implementation of Facebook's DataLoader using async-await."
@@ -26,14 +26,14 @@ runtime-tokio = [
 
 [dependencies]
 async-trait = "0.1"
-async-std = { version = "1.10", optional = true }
-tokio = { version = "1.17", features = [ "sync", "rt" ], optional = true }
+async-std = { version = "1.12", optional = true }
+tokio = { version = "1.21", features = [ "sync", "rt" ], optional = true }
 
 [dev-dependencies]
 futures = "0.3"
-fake = { version = "2.4", features = ["derive"] }
+fake = { version = "2.5", features = ["derive"] }
 rand = "0.8"
-juniper = "0.15.0"
-async-graphql = { version = "2.4", default-features = false }
+juniper = "0.15"
+async-graphql = { version = "4.0", default-features = false }
 serde_json = "1.0"
 
