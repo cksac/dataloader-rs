@@ -3,8 +3,8 @@ use crate::BatchFn;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::{BuildHasher, Hash};
-use std::iter::IntoIterator;
 use std::io::{Error, ErrorKind};
+use std::iter::IntoIterator;
 
 pub trait Cache {
     type Key;
@@ -151,11 +151,10 @@ where
                 for (k, v) in load_ret.into_iter() {
                     state.completed.insert(k, v);
                 }
-                return state
-                    .completed
-                    .get(&key)
-                    .cloned()
-                    .ok_or(Error::new(ErrorKind::NotFound, format!("could not lookup result for given key: {:?}", key)));
+                return state.completed.get(&key).cloned().ok_or(Error::new(
+                    ErrorKind::NotFound,
+                    format!("could not lookup result for given key: {:?}", key),
+                ));
             }
         }
         drop(state);
@@ -182,11 +181,10 @@ where
             }
         }
 
-        state
-            .completed
-            .get(&key)
-            .cloned()
-            .ok_or(Error::new(ErrorKind::NotFound, format!("could not lookup result for given key: {:?}", key)))
+        state.completed.get(&key).cloned().ok_or(Error::new(
+            ErrorKind::NotFound,
+            format!("could not lookup result for given key: {:?}", key),
+        ))
     }
 
     pub async fn load(&self, key: K) -> V {
@@ -238,11 +236,10 @@ where
             }
 
             for key in rest.into_iter() {
-                let v = state
-                    .completed
-                    .get(&key)
-                    .cloned()
-                    .ok_or(Error::new(ErrorKind::NotFound, format!("could not lookup result for given key: {:?}", key)))?;
+                let v = state.completed.get(&key).cloned().ok_or(Error::new(
+                    ErrorKind::NotFound,
+                    format!("could not lookup result for given key: {:?}", key),
+                ))?;
 
                 ret.insert(key, v);
             }
@@ -252,7 +249,9 @@ where
     }
 
     pub async fn load_many(&self, keys: Vec<K>) -> HashMap<K, V> {
-        self.try_load_many(keys).await.unwrap_or_else(|e| panic!("{}", e))
+        self.try_load_many(keys)
+            .await
+            .unwrap_or_else(|e| panic!("{}", e))
     }
 
     pub async fn prime(&self, key: K, val: V) {

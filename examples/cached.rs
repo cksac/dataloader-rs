@@ -1,19 +1,20 @@
-use async_trait::async_trait;
 use dataloader::cached::Loader;
 use dataloader::BatchFn;
 use futures::executor::block_on;
+use futures::future::ready;
 use std::collections::HashMap;
 use std::thread;
 
 struct MyLoadFn;
 
-#[async_trait]
 impl BatchFn<usize, usize> for MyLoadFn {
     async fn load(&mut self, keys: &[usize]) -> HashMap<usize, usize> {
         println!("BatchFn load keys {:?}", keys);
-        keys.iter()
+        let ret = keys
+            .iter()
             .map(|v| (v.clone(), v.clone()))
-            .collect::<HashMap<_, _>>()
+            .collect::<HashMap<_, _>>();
+        ready(ret).await
     }
 }
 

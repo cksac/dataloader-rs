@@ -1,31 +1,33 @@
-use async_trait::async_trait;
 use dataloader::cached::Loader;
 use dataloader::BatchFn;
 use futures::executor::block_on;
 use std::collections::{HashMap, HashSet};
+use std::future::ready;
 use std::sync::{Arc, Mutex};
-use std::{thread, panic};
+use std::{panic, thread};
 
 struct MyLoadFn;
 
-#[async_trait]
 impl BatchFn<usize, usize> for MyLoadFn {
     async fn load(&mut self, keys: &[usize]) -> HashMap<usize, usize> {
-        keys.iter()
+        let ret = keys
+            .iter()
             .map(|v| (v.clone(), v.clone()))
-            .collect::<HashMap<_, _>>()
+            .collect::<HashMap<_, _>>();
+        ready(ret).await
     }
 }
 
 #[derive(Clone)]
 struct Object(usize);
 
-#[async_trait]
 impl BatchFn<usize, Object> for MyLoadFn {
     async fn load(&mut self, keys: &[usize]) -> HashMap<usize, Object> {
-        keys.iter()
+        let ret = keys
+            .iter()
             .map(|v| (v.clone(), Object(v.clone())))
-            .collect::<HashMap<_, _>>()
+            .collect::<HashMap<_, _>>();
+        ready(ret).await
     }
 }
 
@@ -49,7 +51,6 @@ struct LoadFnWithHistory<K> {
     max_batch_loaded: Arc<Mutex<usize>>,
 }
 
-#[async_trait]
 impl BatchFn<usize, usize> for LoadFnWithHistory<usize> {
     async fn load(&mut self, keys: &[usize]) -> HashMap<usize, usize> {
         // println!("BatchFn load keys {:?}", keys);
@@ -64,22 +65,23 @@ impl BatchFn<usize, usize> for LoadFnWithHistory<usize> {
             }
         }
 
-        keys.iter()
+        let ret = keys
+            .iter()
             .map(|v| {
                 loaded_keys.insert(v.clone());
                 (v.clone(), v.clone())
             })
-            .collect::<HashMap<_, _>>()
+            .collect::<HashMap<_, _>>();
+        ready(ret).await
     }
 }
 
 #[derive(Clone)]
 struct LoadFnForEmptyTest;
 
-#[async_trait]
 impl BatchFn<usize, usize> for LoadFnForEmptyTest {
     async fn load(&mut self, _keys: &[usize]) -> HashMap<usize, usize> {
-        HashMap::new()
+        ready(HashMap::new()).await
     }
 }
 
@@ -168,9 +170,7 @@ fn test_load_unresolved_key() {
         block_on(r1);
     });
 
-    let _ = h1.join().map_err(|e| {
-        panic::resume_unwind(e)
-    });
+    let _ = h1.join().map_err(|e| panic::resume_unwind(e));
 }
 
 #[test]

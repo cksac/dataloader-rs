@@ -3,7 +3,7 @@ use crate::BatchFn;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::io::{ErrorKind, Error};
+use std::io::{Error, ErrorKind};
 
 type RequestId = usize;
 
@@ -30,10 +30,10 @@ impl<K, V> State<K, V> {
 }
 
 pub struct Loader<K, V, F>
-    where
-        K: Eq + Hash + Clone,
-        V: Clone,
-        F: BatchFn<K, V>,
+where
+    K: Eq + Hash + Clone,
+    V: Clone,
+    F: BatchFn<K, V>,
 {
     state: Arc<Mutex<State<K, V>>>,
     load_fn: Arc<Mutex<F>>,
@@ -42,10 +42,10 @@ pub struct Loader<K, V, F>
 }
 
 impl<K, V, F> Clone for Loader<K, V, F>
-    where
-        K: Eq + Hash + Clone,
-        V: Clone,
-        F: BatchFn<K, V>,
+where
+    K: Eq + Hash + Clone,
+    V: Clone,
+    F: BatchFn<K, V>,
 {
     fn clone(&self) -> Self {
         Loader {
@@ -58,10 +58,10 @@ impl<K, V, F> Clone for Loader<K, V, F>
 }
 
 impl<K, V, F> Loader<K, V, F>
-    where
-        K: Eq + Hash + Clone + Debug,
-        V: Clone,
-        F: BatchFn<K, V>,
+where
+    K: Eq + Hash + Clone + Debug,
+    V: Clone,
+    F: BatchFn<K, V>,
 {
     pub fn new(load_fn: F) -> Loader<K, V, F> {
         Loader {
@@ -105,7 +105,8 @@ impl<K, V, F> Loader<K, V, F>
                 if load_ret
                     .get(&key)
                     .and_then(|v| state.completed.insert(request_id, v.clone()))
-                    .is_none() {
+                    .is_none()
+                {
                     state.failed.insert(request_id, key);
                 }
             }
@@ -146,7 +147,8 @@ impl<K, V, F> Loader<K, V, F>
                     if load_ret
                         .get(&key)
                         .and_then(|v| state.completed.insert(request_id, v.clone()))
-                        .is_none() {
+                        .is_none()
+                    {
                         state.failed.insert(request_id, key);
                     }
                 }
@@ -168,7 +170,9 @@ impl<K, V, F> Loader<K, V, F>
     }
 
     pub async fn load_many(&self, keys: Vec<K>) -> HashMap<K, V> {
-        self.try_load_many(keys).await.unwrap_or_else(|e| panic!("{}", e))
+        self.try_load_many(keys)
+            .await
+            .unwrap_or_else(|e| panic!("{}", e))
     }
 
     pub async fn try_load_many(&self, keys: Vec<K>) -> Result<HashMap<K, V>, Error> {
@@ -194,7 +198,8 @@ impl<K, V, F> Loader<K, V, F>
                     if load_ret
                         .get(&key)
                         .and_then(|v| state.completed.insert(request_id, v.clone()))
-                        .is_none() {
+                        .is_none()
+                    {
                         state.failed.insert(request_id, key);
                     }
                 }
@@ -237,7 +242,8 @@ impl<K, V, F> Loader<K, V, F>
                     if load_ret
                         .get(&key)
                         .and_then(|v| state.completed.insert(request_id, v.clone()))
-                        .is_none() {
+                        .is_none()
+                    {
                         state.failed.insert(request_id, key);
                     }
                 }
