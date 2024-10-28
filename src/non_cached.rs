@@ -1,5 +1,5 @@
-use crate::runtime::{yield_now, Arc, Mutex};
-use crate::BatchFn;
+use crate::runtime::{Arc, Mutex};
+use crate::{yield_fn, BatchFn, WaitForWorkFn};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -37,7 +37,7 @@ where
 {
     state: Arc<Mutex<State<K, V>>>,
     load_fn: Arc<Mutex<F>>,
-    yield_count: usize,
+    wait_for_work_fn: Arc<dyn WaitForWorkFn>,
     max_batch_size: usize,
 }
 
@@ -52,7 +52,7 @@ where
             state: self.state.clone(),
             load_fn: self.load_fn.clone(),
             max_batch_size: self.max_batch_size,
-            yield_count: self.yield_count,
+            wait_for_work_fn: self.wait_for_work_fn.clone(),
         }
     }
 }
@@ -68,7 +68,7 @@ where
             state: Arc::new(Mutex::new(State::new())),
             load_fn: Arc::new(Mutex::new(load_fn)),
             max_batch_size: 200,
-            yield_count: 10,
+            wait_for_work_fn: Arc::new(yield_fn(10)),
         }
     }
 
@@ -78,8 +78,15 @@ where
     }
 
     pub fn with_yield_count(mut self, yield_count: usize) -> Self {
-        self.yield_count = yield_count;
+        self.wait_for_work_fn = Arc::new(yield_fn(yield_count));
         self
+    }
+
+    /// Replaces the yielding for work behavior with an arbitrary future. Rather than yielding
+    /// the runtime repeatedly this will generate and `.await` a future of your choice.
+    /// ***This is incompatible with*** [`Self::with_yield_count()`].
+    pub fn with_custom_wait_for_work(mut self, wait_for_work_fn: impl WaitForWorkFn) {
+        self.wait_for_work_fn = Arc::new(wait_for_work_fn);
     }
 
     pub fn max_batch_size(&self) -> usize {
@@ -122,16 +129,11 @@ where
         }
         drop(state);
 
-        // yield for other load to append request
-        let mut i = 0;
-        while i < self.yield_count {
-            yield_now().await;
-            i += 1;
-        }
+        (self.wait_for_work_fn)().await;
 
         let mut state = self.state.lock().await;
 
-        if state.completed.get(&request_id).is_none() {
+        if !state.completed.contains_key(&request_id) {
             let batch = state.pending.drain().collect::<HashMap<usize, K>>();
             if !batch.is_empty() {
                 let keys: Vec<K> = batch
@@ -208,12 +210,7 @@ where
 
         drop(state);
 
-        // yield for other load to append request
-        let mut i = 0;
-        while i < self.yield_count {
-            yield_now().await;
-            i += 1;
-        }
+        (self.wait_for_work_fn)().await;
 
         let mut state = self.state.lock().await;
 
