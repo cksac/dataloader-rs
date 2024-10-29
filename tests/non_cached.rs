@@ -18,6 +18,7 @@ impl BatchFn<usize, usize> for MyLoadFn {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone)]
 struct Object(usize);
 
