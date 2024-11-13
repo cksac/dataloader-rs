@@ -85,8 +85,9 @@ where
     /// Replaces the yielding for work behavior with an arbitrary future. Rather than yielding
     /// the runtime repeatedly this will generate and `.await` a future of your choice.
     /// ***This is incompatible with*** [`Self::with_yield_count()`].
-    pub fn with_custom_wait_for_work(mut self, wait_for_work_fn: impl WaitForWorkFn) {
+    pub fn with_custom_wait_for_work(mut self, wait_for_work_fn: impl WaitForWorkFn) -> Self {
         self.wait_for_work_fn = Arc::new(wait_for_work_fn);
+        self
     }
 
     pub fn max_batch_size(&self) -> usize {
